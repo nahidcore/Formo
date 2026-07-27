@@ -178,9 +178,9 @@ function appendSubmissionRow({ submissionId, timestamp, ip, browser, values, fil
     'Timestamp': timestamp,
     'IP': ip,
     'Browser': browser,
-    'Name': values.full_name || values.name || '',
-    'Email': values.email || '',
-    'Phone': values.phone || '',
+    'Name': formatCell(values.full_name || values.name || ''),
+    'Email': formatCell(values.email || ''),
+    'Phone': formatCell(values.phone || ''),
     'Files': JSON.stringify(files || []),
     'Status': 'New',
     'Notes': '',
@@ -192,9 +192,13 @@ function appendSubmissionRow({ submissionId, timestamp, ip, browser, values, fil
 }
 
 function formatCell(v) {
-  if (Array.isArray(v)) return v.join(', ');
+  if (Array.isArray(v)) v = v.join(', ');
   if (v === null || v === undefined) return '';
-  return String(v);
+  let str = String(v);
+  if (str.startsWith('+') || str.startsWith('=')) {
+    str = "'" + str;
+  }
+  return str;
 }
 
 function listSubmissions() {
@@ -265,29 +269,65 @@ function deleteSubmissionRow(submissionId) {
 
 /* ============================== TOPIC STORAGE ============================== */
 
+function getTopicsSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('Topics');
+  if (!sheet) {
+    sheet = ss.insertSheet('Topics');
+    sheet.appendRow(['Slug', 'Name', 'Field IDs', 'Created At']);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
 /**
- * Load topics array from ScriptProperties.
- * Falls back to empty array if none saved yet.
+ * Load topics array from the "Topics" sheet.
  */
 function loadTopics() {
   try {
-    const raw = PropertiesService.getScriptProperties().getProperty(TOPICS_PROP_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const sheet = getTopicsSheet();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+    const data = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+    
+    return data.map(row => {
+      let fieldIds = [];
+      try { fieldIds = row[2] ? JSON.parse(String(row[2])) : []; } catch (e) {}
+      return {
+        slug: String(row[0]),
+        name: String(row[1]),
+        fieldIds: fieldIds,
+        createdAt: String(row[3])
+      };
+    }).filter(t => t.slug);
   } catch (e) {
     return [];
   }
 }
 
 /**
- * Persist topics array to ScriptProperties.
- * ScriptProperties values are strings, max 9 KB per property.
- * For larger sets consider Sheets storage instead.
+ * Persist topics array to the "Topics" sheet.
  */
 function saveTopics(topics) {
-  const json = JSON.stringify(topics || []);
-  PropertiesService.getScriptProperties().setProperty(TOPICS_PROP_KEY, json);
+  const sheet = getTopicsSheet();
+  const lastRow = Math.max(sheet.getLastRow(), 1);
+  
+  // Clear existing rows (if any) beneath the header
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, 4).clearContent();
+  }
+  
+  if (!topics || topics.length === 0) return;
+  
+  // Write new data
+  const rows = topics.map(t => [
+    t.slug || '',
+    t.name || '',
+    JSON.stringify(t.fieldIds || []),
+    t.createdAt || new Date().toISOString()
+  ]);
+  
+  sheet.getRange(2, 1, rows.length, 4).setValues(rows);
 }
 
 /* ============================== RESPONSE HELPER ============================== */

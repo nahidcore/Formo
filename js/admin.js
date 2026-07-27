@@ -176,48 +176,110 @@ const AdminApp = (() => {
   function openDetail(id) {
     const s = submissions.find(x => x.submissionId === id);
     if (!s) return;
-    const rows = [];
-    rows.push({ label: 'Submission ID', value: s.submissionId || '—' });
-    rows.push({ label: 'Submitted', value: Utils.formatDate(s.timestamp) || '—' });
-    rows.push({ label: 'Status', value: s.status || 'New' });
 
-    const configuredFields = getConfiguredFields();
-    const hasValues = configuredFields.some(field => {
-      const value = getSubmissionFieldValue(s, field.id);
-      return value !== undefined && value !== null && value !== '';
-    });
-
-    if (hasValues) {
-      rows.push({ label: 'Selected user info', value: '' });
-    }
-
-    configuredFields.forEach(field => {
-      const value = getSubmissionFieldValue(s, field.id);
-      if (value === undefined || value === null || value === '') return;
-      rows.push({ label: field.label || field.id, value: formatDetailValue(value) });
-    });
-
-    const extraKeys = Object.keys(s.values || {}).filter(key => !configuredFields.some(field => field.id === key));
-    extraKeys.forEach(key => {
-      rows.push({ label: key, value: formatDetailValue((s.values || {})[key]) });
-    });
-
-    els.modalBody.innerHTML = rows.map(({ label, value }) => {
-      if (label === 'Selected user info') {
-        return `<div class="pt-2 pb-1"><p class="field-hint mb-1">${Utils.escapeHTML(label)}</p></div>`;
+    const subKeys = Object.keys(s.values || {});
+    
+    // Auto-detect which topic this submission matches best
+    const topics = Utils.getTopics();
+    let bestMatch = null;
+    let maxMatchCount = 0;
+    topics.forEach(t => {
+      if (!t.fieldIds) return;
+      const matchCount = t.fieldIds.filter(fId => subKeys.includes(fId) && s.values[fId]).length;
+      if (matchCount > maxMatchCount && matchCount > 0) {
+        maxMatchCount = matchCount;
+        bestMatch = t;
       }
+    });
+
+    const fullName = getSubmissionFieldValue(s, 'full_name') || getSubmissionFieldValue(s, 'name') || 'Anonymous';
+    const email = getSubmissionFieldValue(s, 'email') || 'No email';
+    const phone = getSubmissionFieldValue(s, 'phone') || 'No phone';
+
+    let html = `
+      <div class="flex items-center justify-between gap-4 border-b border-[var(--surface-border)] pb-4 mb-4">
+        <div>
+          <h3 class="font-display text-xl mb-1">${Utils.escapeHTML(fullName)}</h3>
+          <p class="field-hint text-sm">${Utils.escapeHTML(email)} · ${Utils.escapeHTML(phone)}</p>
+        </div>
+        <div class="text-right flex flex-col items-end">
+          <span class="badge ${s.status === 'Reviewed' ? 'badge-reviewed' : 'badge-new'} mb-1.5">${Utils.escapeHTML(s.status || 'New')}</span>
+          <p class="text-[0.7rem] field-hint uppercase tracking-wider">${Utils.formatDate(s.timestamp)}</p>
+        </div>
+      </div>
+    `;
+
+    html += `
+      <div class="grid grid-cols-2 gap-3 mb-6 bg-[var(--surface)] border border-[var(--surface-border)] rounded-[var(--radius-sm)] p-3 text-sm">
+        <div>
+          <p class="field-hint text-[0.65rem] uppercase tracking-wider font-semibold mb-1">Submission ID</p>
+          <p class="font-mono text-xs text-[var(--foreground)]">${s.submissionId || '—'}</p>
+        </div>
+        <div>
+          <p class="field-hint text-[0.65rem] uppercase tracking-wider font-semibold mb-1">Inferred Topic</p>
+          <p class="font-medium flex items-center gap-1.5 text-xs">
+            ${bestMatch ? `<span class="w-2 h-2 rounded-full bg-[var(--primary)] shadow-[0_0_8px_var(--primary)]"></span> ${Utils.escapeHTML(bestMatch.name)}` : '<span class="w-2 h-2 rounded-full bg-gray-400"></span> <i class="field-hint">General</i>'}
+          </p>
+        </div>
+      </div>
+    `;
+
+    const steps = typeof FORM_SCHEMA !== 'undefined' ? FORM_SCHEMA.steps : [];
+    const customFields = Utils.getCustomFields();
+    
+    const renderFieldGroup = (title, fields) => {
+      let groupHtml = '';
+      let hasData = false;
+      fields.forEach(f => {
+        const value = getSubmissionFieldValue(s, f.id);
+        if (value === undefined || value === null || value === '') return;
+        hasData = true;
+        groupHtml += `
+          <div class="py-2.5 border-b border-[var(--surface-border)] last:border-0">
+            <span class="block text-[0.75rem] font-medium field-hint mb-0.5">${Utils.escapeHTML(f.label || f.id)}</span>
+            <span class="block break-words text-sm font-medium text-[var(--foreground)]">${Utils.escapeHTML(formatDetailValue(value))}</span>
+          </div>`;
+      });
+      if (!hasData) return '';
       return `
-        <div class="flex justify-between gap-4 py-1.5 border-b border-[var(--surface-border)]">
-          <span class="field-hint">${Utils.escapeHTML(label)}</span>
-          <span class="text-right break-all">${Utils.escapeHTML(value)}</span>
+        <div class="mb-6 last:mb-0">
+          <h4 class="font-semibold text-xs tracking-wide uppercase border-b-2 border-[var(--primary)]/30 inline-block pb-1 mb-3">${Utils.escapeHTML(title)}</h4>
+          <div class="bg-black/5 dark:bg-white/5 rounded-xl p-4 border border-[var(--surface-border)] shadow-sm">
+            ${groupHtml}
+          </div>
         </div>`;
-    }).join('');
+    };
+
+    steps.forEach(step => { html += renderFieldGroup(step.title, step.fields); });
+    if (customFields && customFields.length) { html += renderFieldGroup('Custom Fields', customFields); }
+
+    const configuredIds = new Set([
+      ...(steps.flatMap(step => step.fields.map(f => f.id))),
+      ...(customFields.map(f => f.id)),
+      'full_name', 'name', 'email', 'phone'
+    ]);
+    
+    const extraFields = subKeys.filter(k => !configuredIds.has(k)).map(k => ({ id: k, label: k }));
+    if (extraFields.length) { html += renderFieldGroup('Other Data', extraFields); }
 
     if (s.files && s.files.length) {
-      els.modalBody.innerHTML += `<div class="pt-2"><p class="field-hint mb-1">Files</p>${
-        s.files.map(f => `<a href="${f.url}" target="_blank" rel="noopener" class="block text-[var(--primary)] underline text-sm">${Utils.escapeHTML(f.name)}</a>`).join('')
-      }</div>`;
+      html += `
+        <div class="mt-6">
+          <h4 class="font-semibold text-xs tracking-wide uppercase border-b-2 border-[var(--primary)]/30 inline-block pb-1 mb-3">Attachments</h4>
+          <div class="flex flex-col gap-2">
+            ${s.files.map(f => `
+              <a href="${f.url}" target="_blank" rel="noopener" class="flex items-center gap-3 bg-[var(--surface)] border border-[var(--surface-border)] p-3 rounded-lg hover:border-[var(--primary)] transition-colors group">
+                <div class="w-8 h-8 rounded bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                </div>
+                <span class="text-sm font-medium truncate flex-1">${Utils.escapeHTML(f.name)}</span>
+              </a>
+            `).join('')}
+          </div>
+        </div>`;
     }
+
+    els.modalBody.innerHTML = html;
     els.modal.classList.remove('hidden');
   }
 
