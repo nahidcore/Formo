@@ -98,7 +98,7 @@ function doPost(e) {
       return jsonOut({ status: 'ok', topics: next });
     }
 
-    // No action => this is a public form submission
+    if (action) return jsonOut({ status: 'error', message: 'Unknown action: ' + action });
     return handleSubmission(payload, e);
   } catch (err) {
     return jsonOut({ status: 'error', message: err.message });
@@ -196,7 +196,8 @@ function formatCell(v) {
   if (Array.isArray(v)) v = v.join(', ');
   if (v === null || v === undefined) return '';
   let str = String(v);
-  if (str.startsWith('+') || str.startsWith('=')) {
+  const formulaPrefix = /^\s*[+=@-]/;
+  if (formulaPrefix.test(str)) {
     str = "'" + str;
   }
   return str;

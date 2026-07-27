@@ -155,6 +155,7 @@ const Utils = (() => {
     if (!ep) return null;
     try {
       const res = await fetch(`${ep}?action=getTopics`);
+      if (!res.ok) return null;
       const data = await res.json();
       if (data.status === 'ok' && Array.isArray(data.topics)) {
         // update local cache
@@ -175,9 +176,10 @@ const Utils = (() => {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'setTopics', token: adminToken, topics }),
     });
+    if (!res.ok) throw new Error(`Server request failed (${res.status}).`);
     const data = await res.json();
     if (data.status !== 'ok') throw new Error(data.message || 'Server error saving topics.');
-    setTopics(data.topics || topics); // update cache
+    setTopics(data.topics || topics);
     return data.topics || topics;
   }
 
@@ -189,10 +191,11 @@ const Utils = (() => {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'deleteTopic', token: adminToken, slug }),
     });
+    if (!res.ok) throw new Error(`Server request failed (${res.status}).`);
     const data = await res.json();
     if (data.status !== 'ok') throw new Error(data.message || 'Server error deleting topic.');
     const next = data.topics || getTopics().filter(t => t.slug !== slug);
-    setTopics(next); // update cache
+    setTopics(next);
     return next;
   }
 
@@ -232,7 +235,7 @@ const Utils = (() => {
       if (!v) return true;
       const digits = String(v).replace(/\D/g, '');
       if (!digits) return false;
-      return /^01[3-9]\d{8}$/.test(digits) || /^8801[3-9]\d{8}$/.test(digits);
+      return /^(?:0?1[3-9]\d{8}|8801[3-9]\d{8})$/.test(digits);
     },
     number: v => !v || !isNaN(Number(v)),
     minLength: (v, n) => !v || String(v).length >= n,

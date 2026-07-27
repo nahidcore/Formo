@@ -369,10 +369,11 @@ class FormEngine {
         body: JSON.stringify(payload),
       });
 
-      let result;
-      try { result = await res.json(); } catch { result = { status: 'ok' }; }
-
-      if (result.status === 'error') throw new Error(result.message || 'Submission failed.');
+      if (!res.ok) throw new Error(`Submission failed (${res.status}).`);
+      const result = await res.json();
+      if (!result || result.status !== 'ok') {
+        throw new Error(result?.message || 'Submission failed.');
+      }
 
       localStorage.setItem(this.rateKey, String(Date.now()));
       localStorage.removeItem(this.draftKey);

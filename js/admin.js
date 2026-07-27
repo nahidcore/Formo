@@ -66,6 +66,7 @@ const AdminApp = (() => {
   async function apiGet(action, extraParams = {}) {
     const params = new URLSearchParams({ action, token: token(), ...extraParams });
     const res = await fetch(`${FORM_SCHEMA.endpoint}?${params.toString()}`);
+    if (!res.ok) throw new Error(`Request failed (${res.status}).`);
     return res.json();
   }
 
@@ -88,6 +89,7 @@ const AdminApp = (() => {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action, token: token(), ...data }),
     });
+    if (!res.ok) throw new Error(`Request failed (${res.status}).`);
     return res.json();
   }
 
@@ -367,16 +369,22 @@ const AdminApp = (() => {
 
   function getSubmissionFieldValue(submission, fieldId) {
     const values = submission?.values || {};
-    if (submission?.[fieldId] !== undefined && submission?.[fieldId] !== null && submission?.[fieldId] !== '') return submission[fieldId];
-    if (values[fieldId] !== undefined && values[fieldId] !== null && values[fieldId] !== '') return values[fieldId];
+    const isPresent = value => value !== undefined && value !== null && value !== '';
+    if (isPresent(submission?.[fieldId])) return submission[fieldId];
+    if (isPresent(values[fieldId])) return values[fieldId];
+
+    // Support both current IDs and headings from older Sheets/custom forms.
     const aliases = {
-      full_name: ['full_name', 'name', 'Name'],
-      email: ['email', 'Email'],
-      phone: ['phone', 'Phone'],
+      full_name: ['full_name', 'name', 'Name', 'Full Name'],
+      email: ['email', 'Email', 'Email Address'],
+      phone: ['phone', 'Phone', 'Phone Number', 'Mobile', 'Mobile Number'],
     };
-    for (const alias of aliases[fieldId] || []) {
-      const value = values[alias] ?? submission?.[alias];
-      if (value !== undefined && value !== null && value !== '') return value;
+    const normalize = key => String(key).toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const acceptedKeys = new Set([fieldId, ...(aliases[fieldId] || [])].map(normalize));
+    for (const source of [values, submission || {}]) {
+      for (const [key, value] of Object.entries(source)) {
+        if (acceptedKeys.has(normalize(key)) && isPresent(value)) return value;
+      }
     }
     return '';
   }
