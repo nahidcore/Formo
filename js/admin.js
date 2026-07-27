@@ -15,6 +15,16 @@ const AdminApp = (() => {
     els.tokenInput = document.getElementById('token-input');
     els.btnLogin = document.getElementById('btn-login');
     els.btnRefresh = document.getElementById('btn-refresh');
+    els.btnApplyFormConfig = document.getElementById('btn-apply-form-config');
+    els.btnApplyFeatureConfig = document.getElementById('btn-apply-feature-config');
+    els.btnAddCustomField = document.getElementById('btn-add-custom-field');
+    els.formFieldConfig = document.getElementById('form-field-config');
+    els.featureConfig = document.getElementById('feature-config');
+    els.insightPanel = document.getElementById('insight-panel');
+    els.newFieldLabel = document.getElementById('new-field-label');
+    els.newFieldId = document.getElementById('new-field-id');
+    els.newFieldType = document.getElementById('new-field-type');
+    els.newFieldStep = document.getElementById('new-field-step');
     els.search = document.getElementById('search-input');
     els.tableBody = document.getElementById('table-body');
     els.statTotal = document.getElementById('stat-total');
@@ -221,12 +231,111 @@ const AdminApp = (() => {
     Utils.toast('Excel file exported.', 'success');
   }
 
+  function renderFormFieldConfig() {
+    if (!els.formFieldConfig) return;
+    const visibleIds = Utils.getVisibleFieldIds();
+    const checked = new Set(visibleIds || []);
+    els.formFieldConfig.innerHTML = FORM_SCHEMA.steps.map(step => {
+      const boxes = step.fields.map(field => {
+        const isChecked = checked.size === 0 || checked.has(field.id);
+        return `<label class="flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-3 py-2 text-sm">
+          <input type="checkbox" value="${Utils.escapeHTML(field.id)}" ${isChecked ? 'checked' : ''}>
+          <span>${Utils.escapeHTML(field.label || field.id)}</span>
+        </label>`;
+      }).join('');
+      return `<div class="space-y-2">
+        <p class="font-semibold text-sm">${Utils.escapeHTML(step.title || 'Step')}</p>
+        <div class="grid gap-2 sm:grid-cols-2">${boxes}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function applyFormFieldConfig() {
+    const selected = Array.from(els.formFieldConfig.querySelectorAll('input[type="checkbox"]:checked')).map(item => item.value);
+    Utils.setVisibleFieldIds(selected);
+    renderFormFieldConfig();
+    Utils.toast('Form field visibility updated.', 'success');
+  }
+
+  function renderFeatureConfig() {
+    if (!els.featureConfig) return;
+    const flags = Utils.getFeatureFlags();
+    const options = [
+      { key: 'drafts', label: 'Enable draft restore and autosave' },
+      { key: 'reset', label: 'Show reset button' },
+      { key: 'progress', label: 'Show progress bar' },
+      { key: 'submitLabel', label: 'Show custom submit label' },
+      { key: 'intro', label: 'Show intro section' },
+    ];
+    els.featureConfig.innerHTML = options.map(option => `
+      <label class="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-3 py-2 text-sm">
+        <span>${Utils.escapeHTML(option.label)}</span>
+        <input type="checkbox" data-feature="${Utils.escapeHTML(option.key)}" ${flags[option.key] ? 'checked' : ''}>
+      </label>
+    `).join('');
+  }
+
+  function applyFeatureConfig() {
+    const flags = {
+      drafts: els.featureConfig?.querySelector('[data-feature="drafts"]')?.checked || false,
+      reset: els.featureConfig?.querySelector('[data-feature="reset"]')?.checked || false,
+      progress: els.featureConfig?.querySelector('[data-feature="progress"]')?.checked || false,
+      submitLabel: els.featureConfig?.querySelector('[data-feature="submitLabel"]')?.checked || false,
+      intro: els.featureConfig?.querySelector('[data-feature="intro"]')?.checked || false,
+    };
+    Utils.setFeatureFlags(flags);
+    renderFeatureConfig();
+    Utils.toast('Feature options updated.', 'success');
+  }
+
+  function addCustomField() {
+    const label = (els.newFieldLabel?.value || '').trim();
+    const id = (els.newFieldId?.value || '').trim().toLowerCase().replace(/\s+/g, '_');
+    const type = els.newFieldType?.value || 'text';
+    const stepTitle = els.newFieldStep?.value || 'About you';
+    if (!label || !id) {
+      Utils.toast('Please provide a field label and id.', 'error');
+      return;
+    }
+    const existing = Utils.getCustomFields();
+    const next = [...existing, { id, type, label, stepTitle, required: false }];
+    Utils.setCustomFields(next);
+    els.newFieldLabel.value = '';
+    els.newFieldId.value = '';
+    Utils.toast('Field added. Refresh the form to see it.', 'success');
+  }
+
+  function renderInsights() {
+    if (!els.insightPanel) return;
+    const totalFields = FORM_SCHEMA.steps.reduce((sum, step) => sum + step.fields.length, 0) + Utils.getCustomFields().length;
+    const visibleIds = Utils.getVisibleFieldIds();
+    const visibleCount = visibleIds && visibleIds.length ? visibleIds.length : totalFields;
+    const customCount = Utils.getCustomFields().length;
+    const flags = Utils.getFeatureFlags();
+    els.insightPanel.innerHTML = `
+      <div class="rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3">
+        <p class="field-hint text-xs uppercase tracking-wide">Visible fields</p>
+        <p class="font-display text-xl mt-1">${visibleCount}/${totalFields}</p>
+      </div>
+      <div class="rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3">
+        <p class="field-hint text-xs uppercase tracking-wide">Custom fields</p>
+        <p class="font-display text-xl mt-1">${customCount}</p>
+      </div>
+      <div class="rounded-[var(--radius-sm)] border border-[var(--surface-border)] p-3">
+        <p class="field-hint text-xs uppercase tracking-wide">Enabled features</p>
+        <p class="text-sm mt-1">Drafts: ${flags.drafts ? 'On' : 'Off'} · Reset: ${flags.reset ? 'On' : 'Off'} · Progress: ${flags.progress ? 'On' : 'Off'} · Intro: ${flags.intro ? 'On' : 'Off'}</p>
+      </div>`;
+  }
+
   function bindEvents() {
     els.btnLogin.addEventListener('click', login);
     els.tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
     els.btnRefresh.addEventListener('click', refresh);
     els.search.addEventListener('input', Utils.debounce(applyFilter, 200));
     els.btnExportCsv.addEventListener('click', exportCSV);
+    els.btnApplyFormConfig?.addEventListener('click', applyFormFieldConfig);
+    els.btnApplyFeatureConfig?.addEventListener('click', applyFeatureConfig);
+    els.btnAddCustomField?.addEventListener('click', addCustomField);
     els.btnExportXls.addEventListener('click', exportExcel);
     els.btnPrint.addEventListener('click', () => window.print());
     els.btnCloseModal.addEventListener('click', () => els.modal.classList.add('hidden'));
@@ -243,6 +352,9 @@ const AdminApp = (() => {
   function init() {
     cacheEls();
     bindEvents();
+    renderFormFieldConfig();
+    renderFeatureConfig();
+    renderInsights();
     // Probe backend early so we can show helpful errors for network/CORS/deployment issues.
     ping().then(ok => { if (ok && token()) login(); });
   }

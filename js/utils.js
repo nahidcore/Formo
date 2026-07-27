@@ -33,6 +33,87 @@ const Utils = (() => {
     };
   }
 
+  function getVisibleFieldIds(storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    try {
+      const raw = storage?.getItem('formcraft:visibleFields');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function setVisibleFieldIds(fieldIds, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    try {
+      storage?.setItem('formcraft:visibleFields', JSON.stringify(fieldIds || []));
+    } catch {}
+  }
+
+  function buildVisibleSchema(schema, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    const visibleIds = getVisibleFieldIds(storage);
+    const visibleSet = new Set(visibleIds || []);
+    const steps = (schema.steps || []).map(step => ({
+      ...step,
+      fields: (step.fields || []).filter(field => visibleSet.size === 0 || visibleSet.has(field.id)),
+    })).filter(step => (step.fields || []).length > 0);
+    return { ...schema, steps };
+  }
+
+  function getFeatureFlags(storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    const defaults = { drafts: true, reset: true, progress: true, submitLabel: true, intro: true };
+    try {
+      const raw = storage?.getItem('formcraft:featureFlags');
+      if (!raw) return defaults;
+      const parsed = JSON.parse(raw);
+      return { ...defaults, ...(parsed || {}) };
+    } catch {
+      return defaults;
+    }
+  }
+
+  function setFeatureFlags(flags, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    try {
+      storage?.setItem('formcraft:featureFlags', JSON.stringify(flags || {}));
+    } catch {}
+  }
+
+  function getCustomFields(storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    try {
+      const raw = storage?.getItem('formcraft:customFields');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function setCustomFields(fields, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    try {
+      storage?.setItem('formcraft:customFields', JSON.stringify(fields || []));
+    } catch {}
+  }
+
+  function buildVisibleSchema(schema, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    const visibleIds = getVisibleFieldIds(storage);
+    const visibleSet = new Set(visibleIds || []);
+    const customFields = getCustomFields(storage);
+    const steps = (schema.steps || []).map(step => {
+      const baseFields = (step.fields || []).filter(field => visibleSet.size === 0 || visibleSet.has(field.id));
+      const customStepFields = customFields.filter(field => field.stepTitle === step.title && (visibleSet.size === 0 || visibleSet.has(field.id)));
+      return {
+        ...step,
+        fields: [...baseFields, ...customStepFields],
+      };
+    }).filter(step => (step.fields || []).length > 0);
+    return { ...schema, steps };
+  }
+
+  function isFeatureEnabled(name, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    return !!getFeatureFlags(storage)[name];
+  }
+
   function uuid() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
       const r = (Math.random() * 16) | 0;
@@ -46,7 +127,11 @@ const Utils = (() => {
     required: v => Array.isArray(v) ? v.length > 0 : (v !== undefined && v !== null && String(v).trim() !== ''),
     email: v => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
     url: v => !v || /^(https?:\/\/)[^\s]+\.[^\s]{2,}/i.test(v),
-    phone: v => !v || /^\+?[0-9\s\-()]{7,18}$/.test(v),
+    phone: v => {
+      if (!v) return true;
+      const digits = String(v).replace(/\D/g, '');
+      return /^(?:88)?0?1[3-9]\d{8}$/.test(digits);
+    },
     number: v => !v || !isNaN(Number(v)),
     minLength: (v, n) => !v || String(v).length >= n,
     maxLength: (v, n) => !v || String(v).length <= n,
@@ -55,14 +140,14 @@ const Utils = (() => {
     pattern: (v, re) => !v || new RegExp(re).test(v),
   };
 
-  /** Apply a lightweight input mask for phone numbers: (123) 456-7890 */
+  /** Apply a lightweight input mask for Bangladesh phone numbers */
   function maskPhone(value) {
-    const digits = value.replace(/\D/g, '').slice(0, 10);
-    const len = digits.length;
-    if (len === 0) return '';
-    if (len < 4) return `(${digits}`;
-    if (len < 7) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    const digits = String(value || '').replace(/\D/g, '');
+    if (!digits) return '';
+    const normalized = digits.replace(/^880/, '').replace(/^0/, '');
+    if (normalized.length <= 4) return `+880 ${normalized}`;
+    if (normalized.length <= 6) return `+880 ${normalized.slice(0, 4)}-${normalized.slice(4)}`;
+    return `+880 ${normalized.slice(0, 4)}-${normalized.slice(4, 10)}`;
   }
 
   /** Toast notifications */
@@ -114,5 +199,5 @@ const Utils = (() => {
     } catch { return iso; }
   }
 
-  return { escapeHTML, sanitizeInput, debounce, uuid, validators, maskPhone, toast, fileToBase64, formatBytes, formatDate };
+  return { escapeHTML, sanitizeInput, debounce, getVisibleFieldIds, setVisibleFieldIds, buildVisibleSchema, getCustomFields, setCustomFields, getFeatureFlags, setFeatureFlags, isFeatureEnabled, uuid, validators, maskPhone, toast, fileToBase64, formatBytes, formatDate };
 })();

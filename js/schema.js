@@ -19,7 +19,7 @@ const FORM_SCHEMA = {
       fields: [
         { id: 'full_name', type: 'text', label: 'Full name', placeholder: 'Ada Lovelace', required: true, maxLength: 80, autocomplete: 'name' },
         { id: 'email', type: 'email', label: 'Email address', placeholder: 'ada@example.com', required: true, autocomplete: 'email' },
-        { id: 'phone', type: 'phone', label: 'Phone number', placeholder: '(555) 123-4567', required: true, hint: 'US format, digits only auto-formatted.' },
+        { id: 'phone', type: 'phone', label: 'Phone number', placeholder: '+880 1712-345678', required: true, hint: 'Bangladesh mobile format, digits only auto-formatted.' },
         { id: 'website', type: 'url', label: 'Portfolio / website', placeholder: 'https://yoursite.com', required: false },
         { id: 'password', type: 'password', label: 'Create a client password', required: true, hint: 'Min. 8 characters, used to view your submission status later.', minLength: 8 },
         { id: 'referral', type: 'dropdown', label: 'How did you hear about us?', required: true,

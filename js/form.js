@@ -6,9 +6,9 @@
 
 class FormEngine {
   constructor(schema, root) {
-    this.schema = schema;
+    this.schema = Utils.buildVisibleSchema(schema);
     this.root = root;
-    this.steps = schema.steps;
+    this.steps = this.schema.steps;
     this.current = 0;
     this.values = {};
     this.files = {};      // fieldId -> File[]
@@ -16,6 +16,8 @@ class FormEngine {
     this.draftKey = `formcraft:draft:${schema.formId}`;
     this.rateKey = `formcraft:lastSubmit:${schema.formId}`;
     this.submitting = false;
+
+    this.featureFlags = Utils.getFeatureFlags();
 
     this.els = {
       stepNav: root.querySelector('#step-nav'),
@@ -26,6 +28,7 @@ class FormEngine {
       btnNext: root.querySelector('#btn-next'),
       btnSubmit: root.querySelector('#btn-submit'),
       btnReset: root.querySelector('#btn-reset'),
+      formIntro: root.querySelector('#form-intro'),
       formShell: root.querySelector('#form-shell'),
       successShell: root.querySelector('#success-shell'),
       errorBanner: root.querySelector('#error-banner'),
@@ -42,6 +45,10 @@ class FormEngine {
   /* ---------------- Rendering ---------------- */
 
   renderStepNav() {
+    if (!this.steps.length) {
+      this.els.stepNav.innerHTML = '';
+      return;
+    }
     this.els.stepNav.innerHTML = this.steps.map((s, i) => `
       <div class="flex items-center gap-2 ${i < this.steps.length - 1 ? 'flex-1' : ''}">
         <div class="ink-ring" data-ring="${i}" style="--pct:0"><span>${i + 1}</span></div>
@@ -50,6 +57,11 @@ class FormEngine {
   }
 
   updateStepNav() {
+    if (!this.steps.length) {
+      this.els.progressFill.style.width = '0%';
+      this.els.progressLabel.textContent = 'No enabled fields';
+      return;
+    }
     this.steps.forEach((_, i) => {
       const ring = this.els.stepNav.querySelector(`[data-ring="${i}"]`);
       if (!ring) return;
@@ -65,6 +77,13 @@ class FormEngine {
   }
 
   renderStep(direction = 'forward') {
+    if (!this.steps.length) {
+      this.els.stepBody.innerHTML = '<div class="glass card p-8 text-center">No form fields are enabled right now.</div>';
+      this.els.progressFill.style.width = '0%';
+      this.els.progressLabel.textContent = 'No enabled fields';
+      this._updateNavButtons();
+      return;
+    }
     const step = this.steps[this.current];
     const wrapper = document.createElement('div');
     wrapper.className = 'step-enter';
@@ -77,6 +96,11 @@ class FormEngine {
 
     this.els.stepBody.innerHTML = '';
     this.els.stepBody.appendChild(wrapper);
+    this._applyFeatureFlags();
+    if (this.els.formIntro) {
+      this.els.formIntro.classList.toggle('hidden', !Utils.isFeatureEnabled('intro'));
+      this.els.formIntro.innerHTML = `<h1 class="font-display text-3xl md:text-4xl font-medium tracking-tight mb-2">${Utils.escapeHTML(this.schema.title || 'Form')}</h1><p class="field-hint">${Utils.escapeHTML(this.schema.subtitle || '')}</p>`;
+    }
 
     // Restore any saved values into inputs
     step.fields.forEach(f => this._hydrateField(f));
@@ -86,6 +110,19 @@ class FormEngine {
     this.applyConditionals();
     this.updateStepNav();
     this._updateNavButtons();
+  }
+
+  _applyFeatureFlags() {
+    const resetEnabled = Utils.isFeatureEnabled('reset');
+    this.els.btnReset.classList.toggle('hidden', !resetEnabled);
+    if (Utils.isFeatureEnabled('progress')) {
+      this.els.progressFill.parentElement.classList.remove('hidden');
+    } else {
+      this.els.progressFill.parentElement.classList.add('hidden');
+    }
+    if (!Utils.isFeatureEnabled('drafts')) {
+      this.els.draftBanner.classList.add('hidden');
+    }
   }
 
   _hydrateField(field) {
@@ -247,6 +284,10 @@ class FormEngine {
   }
 
   resetForm() {
+    if (!Utils.isFeatureEnabled('reset')) {
+      Utils.toast('Reset is disabled by admin settings.', 'info');
+      return;
+    }
     if (!confirm('Reset the form? All entered data will be cleared.')) return;
     this.values = {}; this.files = {}; this.signatures = {}; this.current = 0;
     localStorage.removeItem(this.draftKey);
@@ -257,6 +298,7 @@ class FormEngine {
   /* ---------------- Draft autosave ---------------- */
 
   _saveDraft() {
+    if (!Utils.isFeatureEnabled('drafts')) return;
     Utils.debounce(() => {
       try {
         localStorage.setItem(this.draftKey, JSON.stringify({ values: this.values, current: this.current, savedAt: Date.now() }));
@@ -265,6 +307,7 @@ class FormEngine {
   }
 
   _restoreDraft() {
+    if (!Utils.isFeatureEnabled('drafts')) return;
     const raw = localStorage.getItem(this.draftKey);
     if (!raw) return;
     try {
@@ -368,7 +411,7 @@ class FormEngine {
     this.els.btnSubmit.disabled = isLoading;
     this.els.btnSubmit.innerHTML = isLoading
       ? `<span class="spinner"></span> Submitting…`
-      : `Submit application`;
+      : (Utils.isFeatureEnabled('submitLabel') ? (this.schema.submitLabel || 'Submit application') : 'Submit');
   }
 
   _showSuccess(submissionId) {

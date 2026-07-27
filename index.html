@@ -56,7 +56,7 @@
 
   <div id="form-shell">
     <!-- Intro -->
-    <div class="mb-8">
+    <div id="form-intro" class="mb-8">
       <h1 class="font-display text-3xl md:text-4xl font-medium tracking-tight mb-2">${'' /* replaced below */}</h1>
     </div>
 
@@ -114,8 +114,8 @@
 <script src="js/fields.js"></script>
 <script src="js/form.js"></script>
 <script>
-  document.querySelector('#form-shell h1').textContent = FORM_SCHEMA.title;
-  document.querySelector('#form-shell h1').insertAdjacentHTML('afterend', `<p class="field-hint">${Utils.escapeHTML(FORM_SCHEMA.subtitle)}</p>`);
+  document.querySelector('#form-intro h1').textContent = FORM_SCHEMA.title;
+  document.querySelector('#form-intro h1').insertAdjacentHTML('afterend', `<p class="field-hint">${Utils.escapeHTML(FORM_SCHEMA.subtitle)}</p>`);
   document.getElementById('step-body-form').addEventListener('submit', e => e.preventDefault());
 </script>
 </body>

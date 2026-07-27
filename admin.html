@@ -77,6 +77,66 @@
       </div>
     </div>
 
+    <div class="glass card p-4 mb-8">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 class="font-display text-lg">Form field visibility</h2>
+          <p class="field-hint text-sm">Choose which fields appear on the public form.</p>
+        </div>
+        <button id="btn-apply-form-config" class="btn btn-primary text-sm">Apply form settings</button>
+      </div>
+      <div id="form-field-config" class="grid gap-3 md:grid-cols-2"></div>
+    </div>
+
+    <div class="glass card p-4 mb-8">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 class="font-display text-lg">Feature options</h2>
+          <p class="field-hint text-sm">Toggle helpful form features for visitors.</p>
+        </div>
+        <button id="btn-apply-feature-config" class="btn btn-primary text-sm">Save features</button>
+      </div>
+      <div id="feature-config" class="grid gap-3 md:grid-cols-2"></div>
+    </div>
+
+    <div class="glass card p-4 mb-8">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 class="font-display text-lg">Form insights</h2>
+          <p class="field-hint text-sm">A quick overview of how your form is configured.</p>
+        </div>
+      </div>
+      <div id="insight-panel" class="grid gap-3 md:grid-cols-3"></div>
+    </div>
+
+    <div class="glass card p-4 mb-8">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 class="font-display text-lg">Add new field</h2>
+          <p class="field-hint text-sm">Create a simple custom field for the public form.</p>
+        </div>
+      </div>
+      <div class="grid gap-3 md:grid-cols-2">
+        <input id="new-field-label" class="field-input" placeholder="Field label" />
+        <input id="new-field-id" class="field-input" placeholder="Field id (slug)" />
+        <select id="new-field-type" class="field-input">
+          <option value="text">Text</option>
+          <option value="email">Email</option>
+          <option value="phone">Phone</option>
+          <option value="textarea">Textarea</option>
+          <option value="number">Number</option>
+          <option value="dropdown">Dropdown</option>
+        </select>
+        <select id="new-field-step" class="field-input">
+          <option value="About you">About you</option>
+          <option value="Project preferences">Project preferences</option>
+          <option value="Project details">Project details</option>
+          <option value="Attachments & signature">Attachments & signature</option>
+        </select>
+        <button id="btn-add-custom-field" class="btn btn-primary md:col-span-2">Add field</button>
+      </div>
+    </div>
+
     <!-- Toolbar -->
     <div class="glass card p-4 mb-4 flex flex-wrap items-center gap-3 no-print">
       <input id="search-input" type="search" placeholder="Search name, email, or any field…" class="field-input flex-1 min-w-[200px]">
