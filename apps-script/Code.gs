@@ -64,11 +64,12 @@ function doGet(e) {
 
 function doPost(e) {
   try {
-    const payload = JSON.parse(e.postData.contents);
-    const action = payload.action;
+    const payload = JSON.parse(e.postData.contents || '{}');
+    // Normalize POST actions as well so camelCase client actions are handled.
+    const action = String(payload.action || '').toLowerCase();
 
     // Admin-authenticated write actions
-    if (action === 'markReviewed') {
+    if (action === 'markreviewed') {
       Validation.verifyAdminToken(payload.token);
       setStatus(payload.submissionId, 'Reviewed');
       return jsonOut({ status: 'ok' });

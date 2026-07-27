@@ -643,8 +643,8 @@ const AdminApp = (() => {
       await Utils.saveTopicsToServer(nextTopics, token());
       Utils.toast(existingIndex >= 0 ? `Topic "${name}" updated.` : `Topic "${name}" created.`, 'success');
     } catch (e) {
-      Utils.toast('Server save failed: ' + (e.message || e) + ' — saved locally only.', 'error');
-      Utils.setTopics(nextTopics); // fallback to localStorage
+      Utils.toast('Topic was not saved to the live site: ' + (e.message || e), 'error');
+      return;
     } finally {
       if (els.btnCreateTopic) { els.btnCreateTopic.disabled = false; syncTopicEditorUI(); }
     }
@@ -679,19 +679,18 @@ const AdminApp = (() => {
   async function deleteTopic(slug) {
     if (!confirm('Delete this topic?')) return;
 
-    // Optimistic local update
-    const nextTopics = Utils.getTopics().filter(item => item.slug !== slug);
-    if (editingTopicSlug === slug) editingTopicSlug = null;
-    const activeSlug = Utils.getActiveTopicSlug();
-    if (activeSlug === slug) { Utils.setActiveTopicSlug(''); Utils.setVisibleFieldIds([]); }
-
     // Persist to server
     try {
       await Utils.deleteTopicFromServer(slug, token());
+      if (editingTopicSlug === slug) editingTopicSlug = null;
+      if (Utils.getActiveTopicSlug() === slug) {
+        Utils.setActiveTopicSlug('');
+        Utils.setVisibleFieldIds([]);
+      }
       Utils.toast('Topic deleted.', 'success');
     } catch (e) {
-      Utils.toast('Server delete failed: ' + (e.message || e) + ' — removed locally.', 'error');
-      Utils.setTopics(nextTopics); // fallback
+      Utils.toast('Topic was not deleted from the live site: ' + (e.message || e), 'error');
+      return;
     }
 
     renderTopicFieldList();

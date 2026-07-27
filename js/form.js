@@ -427,6 +427,22 @@ class FormEngine {
     setTimeout(() => this.els.errorBanner.classList.add('hidden'), 6000);
     Utils.toast(message, 'error');
   }
+
+  /** Rebuild the visible form after the shared topic list has loaded. */
+  refreshSchema() {
+    const savedValues = { ...this.values };
+    const savedFiles = { ...this.files };
+    const savedSignatures = { ...this.signatures };
+
+    this.schema = Utils.buildVisibleSchema(FORM_SCHEMA);
+    this.steps = this.schema.steps;
+    this.current = Math.max(0, Math.min(this.current, this.steps.length - 1));
+    this.values = savedValues;
+    this.files = savedFiles;
+    this.signatures = savedSignatures;
+    this.renderStepNav();
+    this.renderStep();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
