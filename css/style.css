@@ -1,0 +1,296 @@
+/* ==========================================================================
+   FormCraft — Design Tokens & Core Styles
+   A "passport / ticket" visual motif: ink-fill circular progress,
+   perforated dividers, stamp micro-interactions.
+   ========================================================================== */
+
+:root{
+  --paper:        #FAFAF8;
+  --paper-2:      #F1F0EA;
+  --ink:          #12181B;
+  --ink-soft:     #4B5A57;
+  --line:         #E4E1D8;
+
+  --surface:      rgba(255,255,255,0.55);
+  --surface-solid:#FFFFFF;
+  --surface-border: rgba(18,24,27,0.08);
+
+  --primary:      #0F766E;   /* deep teal */
+  --primary-2:    #14B8A6;   /* teal light */
+  --accent:       #F2653A;   /* coral - signature accent */
+  --accent-2:     #FFB199;
+
+  --danger:       #E1483B;
+  --success:      #12876A;
+
+  --radius-lg: 1.25rem;
+  --radius-md: 0.875rem;
+  --radius-sm: 0.5rem;
+
+  --shadow-soft: 0 1px 2px rgba(18,24,27,0.04), 0 12px 32px -12px rgba(18,24,27,0.18);
+  --shadow-pop:  0 4px 10px rgba(18,24,27,0.08), 0 24px 48px -20px rgba(18,24,27,0.28);
+}
+
+.dark{
+  --paper:        #0B1210;
+  --paper-2:      #0F1917;
+  --ink:          #EDF3F1;
+  --ink-soft:     #93A6A1;
+  --line:         rgba(255,255,255,0.08);
+
+  --surface:      rgba(20,30,28,0.55);
+  --surface-solid:#101B19;
+  --surface-border: rgba(255,255,255,0.08);
+
+  --primary:      #2DD4BF;
+  --primary-2:    #14B8A6;
+  --accent:       #FF7A50;
+  --accent-2:     #7A3624;
+
+  --shadow-soft: 0 1px 2px rgba(0,0,0,0.3), 0 12px 32px -12px rgba(0,0,0,0.6);
+  --shadow-pop:  0 4px 10px rgba(0,0,0,0.4), 0 24px 48px -20px rgba(0,0,0,0.7);
+}
+
+*{ box-sizing: border-box; }
+
+html{ scroll-behavior: smooth; }
+
+body{
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  transition: background .4s ease, color .4s ease;
+  min-height: 100vh;
+}
+
+/* Ambient backdrop: soft radial washes, no stock-gradient cliche */
+.bg-ambient{
+  position: fixed; inset: 0; z-index: -1; overflow: hidden;
+  background:
+    radial-gradient(60% 50% at 15% 10%, color-mix(in srgb, var(--primary) 14%, transparent) 0%, transparent 60%),
+    radial-gradient(50% 40% at 90% 20%, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 60%),
+    var(--paper);
+}
+
+.font-display{ font-family: 'Fraunces', ui-serif, Georgia, serif; }
+.font-mono{ font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+/* ---------- Glass card ---------- */
+.glass{
+  background: var(--surface);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--shadow-soft);
+}
+
+.card{
+  border-radius: var(--radius-lg);
+}
+
+/* ---------- Perforated ticket divider (signature motif) ---------- */
+.perforated{
+  position: relative;
+  border-bottom: 1px dashed var(--line);
+}
+.perforated::before, .perforated::after{
+  content:"";
+  position:absolute; bottom:-10px;
+  width:20px; height:20px; border-radius:50%;
+  background: var(--paper);
+  border: 1px solid var(--surface-border);
+}
+.perforated::before{ left:-10px; }
+.perforated::after{ right:-10px; }
+
+/* ---------- Ink-fill circular step progress ---------- */
+.ink-ring{
+  --pct: 0;
+  width: 46px; height:46px; border-radius: 50%;
+  display:flex; align-items:center; justify-content:center;
+  background: conic-gradient(var(--primary) calc(var(--pct)*1%), var(--line) 0);
+  transition: background 0.6s cubic-bezier(.65,0,.35,1);
+  position: relative;
+}
+.ink-ring::before{
+  content:""; position:absolute; inset:4px; border-radius:50%;
+  background: var(--surface-solid);
+}
+.ink-ring span{ position:relative; font-family:'JetBrains Mono',monospace; font-size:.72rem; font-weight:600; }
+
+/* Stamp pop when a step is completed */
+@keyframes stampPop{
+  0%{ transform: scale(0.4) rotate(-14deg); opacity:0; }
+  60%{ transform: scale(1.12) rotate(4deg); opacity:1; }
+  100%{ transform: scale(1) rotate(0deg); opacity:1; }
+}
+.stamp-pop{ animation: stampPop .45s cubic-bezier(.34,1.56,.64,1); }
+
+/* ---------- Progress bar (linear, used inside form header) ---------- */
+.progress-track{
+  height: 6px; border-radius: 999px; background: var(--line); overflow:hidden;
+}
+.progress-fill{
+  height:100%; border-radius:999px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-2));
+  transition: width .5s cubic-bezier(.65,0,.35,1);
+}
+
+/* ---------- Step transitions ---------- */
+.step-enter{ animation: stepIn .38s cubic-bezier(.2,.8,.2,1); }
+@keyframes stepIn{
+  from{ opacity:0; transform: translateX(18px); }
+  to{ opacity:1; transform: translateX(0); }
+}
+.step-exit{ animation: stepOut .28s ease forwards; }
+@keyframes stepOut{
+  from{ opacity:1; transform: translateX(0); }
+  to{ opacity:0; transform: translateX(-18px); }
+}
+
+/* ---------- Field styling ---------- */
+.field-label{
+  font-size: .85rem; font-weight: 600; color: var(--ink); letter-spacing: .01em;
+}
+.field-hint{ font-size:.78rem; color: var(--ink-soft); }
+.field-input{
+  width:100%; padding: .7rem .9rem; border-radius: var(--radius-sm);
+  border: 1.5px solid var(--surface-border);
+  background: var(--surface-solid);
+  color: var(--ink);
+  font-size: .93rem;
+  transition: border-color .18s ease, box-shadow .18s ease, background .3s ease;
+}
+.field-input:focus{
+  outline: none; border-color: var(--primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.field-input.invalid{
+  border-color: var(--danger);
+  animation: shake .32s linear;
+}
+.field-input.valid{ border-color: var(--success); }
+
+@keyframes shake{
+  10%,90%{ transform: translateX(-1px); }
+  20%,80%{ transform: translateX(2px); }
+  30%,50%,70%{ transform: translateX(-4px); }
+  40%,60%{ transform: translateX(4px); }
+}
+
+.error-msg{
+  font-size:.78rem; color: var(--danger); margin-top:.3rem;
+  display:flex; align-items:center; gap:.3rem;
+  animation: fadeUp .2s ease;
+}
+@keyframes fadeUp{ from{opacity:0; transform:translateY(-4px);} to{opacity:1; transform:translateY(0);} }
+
+.char-counter{ font-size:.72rem; color: var(--ink-soft); font-family:'JetBrains Mono',monospace; }
+
+/* ---------- Buttons ---------- */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:.5rem;
+  padding:.72rem 1.4rem; border-radius: var(--radius-sm); font-weight:600; font-size:.9rem;
+  transition: transform .15s ease, box-shadow .15s ease, background .2s ease, opacity .2s ease;
+  cursor:pointer; border:none; user-select:none;
+}
+.btn:active{ transform: scale(.97); }
+.btn-primary{
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color:#fff; box-shadow: var(--shadow-soft);
+}
+.btn-primary:hover{ box-shadow: var(--shadow-pop); }
+.btn-primary:disabled{ opacity:.5; cursor:not-allowed; box-shadow:none; }
+.btn-ghost{
+  background: transparent; color: var(--ink); border:1.5px solid var(--surface-border);
+}
+.btn-ghost:hover{ background: var(--surface); }
+.btn-accent{ background: var(--accent); color:#fff; }
+
+/* ---------- Toggle switch ---------- */
+.toggle{ width:46px; height:26px; border-radius:999px; background: var(--line); position:relative; cursor:pointer; transition: background .25s ease; flex-shrink:0; }
+.toggle.on{ background: var(--primary); }
+.toggle .knob{ position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.3); transition: left .25s cubic-bezier(.34,1.56,.64,1); }
+.toggle.on .knob{ left:23px; }
+
+/* ---------- Rating stars ---------- */
+.star{ font-size:1.6rem; cursor:pointer; color: var(--line); transition: transform .15s ease, color .15s ease; }
+.star:hover{ transform: scale(1.15); }
+.star.filled{ color: var(--accent); }
+
+/* ---------- Range slider ---------- */
+input[type="range"]{ -webkit-appearance:none; width:100%; height:6px; border-radius:999px; background: var(--line); }
+input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none; width:20px; height:20px; border-radius:50%;
+  background: var(--primary); cursor:pointer; box-shadow: 0 2px 6px rgba(0,0,0,.25);
+  border: 3px solid var(--surface-solid);
+}
+
+/* ---------- Dropzone ---------- */
+.dropzone{
+  border: 1.5px dashed var(--surface-border); border-radius: var(--radius-md);
+  padding: 1.4rem; text-align:center; cursor:pointer; transition: all .2s ease;
+  background: color-mix(in srgb, var(--surface-solid) 60%, transparent);
+}
+.dropzone.drag{ border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.file-chip{
+  display:flex; align-items:center; gap:.5rem; padding:.4rem .7rem; border-radius:999px;
+  background: var(--surface); border:1px solid var(--surface-border); font-size:.78rem;
+}
+
+/* ---------- Toast ---------- */
+.toast{
+  position:fixed; bottom:1.25rem; right:1.25rem; z-index:80;
+  padding:.85rem 1.1rem; border-radius: var(--radius-md); box-shadow: var(--shadow-pop);
+  background: var(--surface-solid); border:1px solid var(--surface-border);
+  display:flex; align-items:center; gap:.6rem; font-size:.85rem; font-weight:500;
+  animation: toastIn .3s cubic-bezier(.2,.8,.2,1);
+  max-width: 320px;
+}
+@keyframes toastIn{ from{opacity:0; transform: translateY(12px);} to{opacity:1; transform:translateY(0);} }
+
+/* ---------- Loading spinner ---------- */
+.spinner{
+  width:18px; height:18px; border-radius:50%;
+  border: 2.5px solid rgba(255,255,255,.4); border-top-color:#fff;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin{ to{ transform: rotate(360deg); } }
+
+.skeleton{
+  background: linear-gradient(90deg, var(--line) 25%, color-mix(in srgb, var(--line) 50%, transparent) 37%, var(--line) 63%);
+  background-size: 400% 100%;
+  animation: skeleton 1.4s ease infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes skeleton{ 0%{background-position:100% 50%;} 100%{background-position:0 50%;} }
+
+/* ---------- Success checkmark draw ---------- */
+.check-circle{ stroke-dasharray: 166; stroke-dashoffset:166; animation: circleDraw .6s ease forwards; }
+.check-tick{ stroke-dasharray: 48; stroke-dashoffset:48; animation: tickDraw .35s .5s ease forwards; }
+@keyframes circleDraw{ to{ stroke-dashoffset:0; } }
+@keyframes tickDraw{ to{ stroke-dashoffset:0; } }
+
+/* ---------- Error burst icon ---------- */
+.error-x{ stroke-dasharray: 60; stroke-dashoffset:60; animation: circleDraw .5s ease forwards; }
+
+/* ---------- Signature pad ---------- */
+canvas.sig-pad{ touch-action:none; border-radius: var(--radius-md); border:1.5px solid var(--surface-border); background: var(--surface-solid); cursor: crosshair; width:100%; height:180px; }
+
+/* ---------- Scrollbar ---------- */
+::-webkit-scrollbar{ width:8px; height:8px; }
+::-webkit-scrollbar-thumb{ background: var(--line); border-radius:999px; }
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce){
+  *{ animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+/* ---------- Focus visibility (a11y) ---------- */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible{
+  outline: 2px solid var(--primary); outline-offset: 2px;
+}
+
+/* ---------- Utility ---------- */
+.no-scrollbar::-webkit-scrollbar{ display:none; }
+.no-scrollbar{ -ms-overflow-style:none; scrollbar-width:none; }

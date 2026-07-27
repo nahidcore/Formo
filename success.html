@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Submission confirmed · FormCraft</title>
+<meta name="theme-color" content="#0F766E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="antialiased flex items-center justify-center min-h-screen">
+<div class="bg-ambient" aria-hidden="true"></div>
+<div id="toast-root"></div>
+
+<main class="max-w-lg w-full mx-auto px-4 py-10">
+  <div class="glass card p-10 text-center">
+    <svg width="88" height="88" viewBox="0 0 52 52" class="mx-auto mb-4">
+      <circle class="check-circle" cx="26" cy="26" r="24" fill="none" stroke="var(--success)" stroke-width="3"/>
+      <path class="check-tick" fill="none" stroke="var(--success)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" d="M15 27l7 7 16-16"/>
+    </svg>
+    <h1 class="font-display text-3xl font-medium mb-2">You're all set</h1>
+    <p class="field-hint mb-6">Your form has been submitted successfully and logged to our records.</p>
+
+    <div class="rounded-[var(--radius-md)] border border-[var(--surface-border)] p-4 text-left mb-6" id="details">
+      <div class="flex justify-between py-1.5 text-sm"><span class="field-hint">Reference ID</span><span id="ref-id" class="font-mono font-semibold">—</span></div>
+      <div class="flex justify-between py-1.5 text-sm border-t border-[var(--surface-border)]"><span class="field-hint">Submitted</span><span id="ref-time" class="font-mono">—</span></div>
+    </div>
+
+    <a href="index.html" class="btn btn-primary w-full justify-center">Back to form</a>
+  </div>
+  <p class="text-center field-hint mt-6">Keep your reference ID for any follow-up questions.</p>
+</main>
+
+<script src="js/utils.js"></script>
+<script src="js/theme.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  const id = params.get('id') || params.get('submissionId');
+  document.getElementById('ref-id').textContent = id || 'N/A — opened directly';
+  document.getElementById('ref-time').textContent = new Date().toLocaleString();
+</script>
+</body>
+</html>
