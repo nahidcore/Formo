@@ -16,6 +16,7 @@
 
 const SHEET_NAME = 'Submissions';
 const TOPICS_PROP_KEY = 'formcraft_topics'; // ScriptProperties key for topic storage
+const CONFIG_PROP_KEY = 'formcraft_config';
 
 // Columns that always exist, in order, before the dynamic per-field columns.
 const BASE_COLUMNS = ['Submission ID', 'Timestamp', 'IP', 'Browser', 'Name', 'Email', 'Phone'];
@@ -54,6 +55,10 @@ function doGet(e) {
       const found = loadTopics().find(t => t.slug === slug);
       if (!found) return jsonOut({ status: 'error', message: 'Topic not found.' });
       return jsonOut({ status: 'ok', topic: found });
+
+    if (action === 'getconfig') {
+      return jsonOut({ status: 'ok', config: loadConfig() });
+    }
     }
 
     return jsonOut({ status: 'error', message: 'Unknown action: ' + action });
@@ -92,6 +97,14 @@ function doPost(e) {
     if (action === 'deletetopic') {
       Validation.verifyAdminToken(payload.token);
       const slug = (payload.slug || '').trim();
+
+    if (action === 'setconfig') {
+      Validation.verifyAdminToken(payload.token);
+      if (!payload.config || typeof payload.config !== 'object' || Array.isArray(payload.config)) {
+        return jsonOut({ status: 'error', message: 'config must be an object.' });
+      }
+      return jsonOut({ status: 'ok', config: saveConfig(payload.config) });
+    }
       if (!slug) return jsonOut({ status: 'error', message: 'slug required.' });
       const next = loadTopics().filter(t => t.slug !== slug);
       saveTopics(next);
@@ -318,6 +331,38 @@ function saveTopics(topics) {
   if (lastRow > 1) {
     sheet.getRange(2, 1, lastRow - 1, 4).clearContent();
   }
+/* ============================== SHARED FORM CONFIG ============================== */
+
+function defaultConfig() {
+  return { visibleFieldIds: [], customFields: [], featureFlags: { drafts: true, reset: true, progress: true, submitLabel: true, intro: true }, activeTopicSlug: '' };
+}
+
+function loadConfig() {
+  const defaults = defaultConfig();
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty(CONFIG_PROP_KEY);
+    if (!raw) return defaults;
+    const saved = JSON.parse(raw);
+    return {
+      ...defaults, ...saved,
+      visibleFieldIds: Array.isArray(saved.visibleFieldIds) ? saved.visibleFieldIds : [],
+      customFields: Array.isArray(saved.customFields) ? saved.customFields : [],
+      featureFlags: { ...defaults.featureFlags, ...(saved.featureFlags || {}) },
+      activeTopicSlug: String(saved.activeTopicSlug || '')
+    };
+  } catch (err) { return defaults; }
+}
+
+function saveConfig(patch) {
+  const next = { ...loadConfig(), ...patch };
+  if (!Array.isArray(next.visibleFieldIds)) next.visibleFieldIds = [];
+  if (!Array.isArray(next.customFields)) next.customFields = [];
+  next.featureFlags = { ...defaultConfig().featureFlags, ...(next.featureFlags || {}) };
+  next.activeTopicSlug = String(next.activeTopicSlug || '');
+  PropertiesService.getScriptProperties().setProperty(CONFIG_PROP_KEY, JSON.stringify(next));
+  return next;
+}
+
   
   if (!topics || topics.length === 0) return;
   

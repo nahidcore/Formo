@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Health · FormCraft</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0F766E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="antialiased min-h-screen">
+<div class="bg-ambient" aria-hidden="true"></div>
+<div id="toast-root"></div>
+
+<main class="max-w-3xl mx-auto px-4 sm:px-6 py-10">
+  <div class="flex flex-wrap items-start justify-between gap-4 mb-8">
+    <div>
+      <p class="section-eyebrow mb-1">Diagnostics</p>
+      <h1 class="font-display text-3xl md:text-4xl">System health</h1>
+      <p class="field-hint mt-2">Checks the public services required for forms and shared topics. No data is changed.</p>
+    </div>
+    <div class="flex gap-2">
+      <a href="index.html" class="btn btn-ghost">View form</a>
+      <button id="btn-run-checks" class="btn btn-primary" type="button">Run checks</button>
+    </div>
+  </div>
+
+  <section class="glass card p-5 mb-5" aria-live="polite">
+    <div class="flex items-center gap-3">
+      <span id="overall-icon" class="w-10 h-10 rounded-full flex items-center justify-center bg-[var(--surface)] text-xl">…</span>
+      <div>
+        <h2 id="overall-title" class="font-semibold">Checking services…</h2>
+        <p id="overall-message" class="field-hint text-sm">Please wait.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="glass card overflow-hidden">
+    <div class="p-5 border-b border-[var(--surface-border)]">
+      <h2 class="font-display text-xl">Checks</h2>
+      <p class="field-hint text-sm mt-1">Expected results make it easy to pinpoint deployment and browser problems.</p>
+    </div>
+    <div id="check-list" class="divide-y divide-[var(--surface-border)]"></div>
+  </section>
+
+  <section class="glass card p-5 mt-5">
+    <h2 class="font-display text-xl mb-2">What to do when a check fails</h2>
+    <ul class="field-hint text-sm space-y-2 list-disc pl-5">
+      <li><strong class="text-[var(--foreground)]">Backend or topics API fails:</strong> deploy a new Apps Script Web App version and confirm the endpoint in <code>js/schema.js</code> is its <code>/exec</code> URL.</li>
+      <li><strong class="text-[var(--foreground)]">Topics count is zero:</strong> the connection is healthy; create a topic from <a class="text-[var(--primary)] underline" href="admin.html">admin</a> to add the first shared topic.</li>
+      <li><strong class="text-[var(--foreground)]">Storage fails:</strong> allow site data/cookies for this site or leave private browsing. Drafts and local topic cache need browser storage.</li>
+    </ul>
+  </section>
+</main>
+
+<script src="js/utils.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/schema.js"></script>
+<script>
+  const checks = [
+    {
+      name: 'Configured endpoint',
+      expected: 'A Google Apps Script /exec URL is configured.',
+      run: async () => {
+        const endpoint = FORM_SCHEMA?.endpoint || '';
+        const valid = /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(endpoint);
+        return valid
+          ? { ok: true, detail: endpoint }
+          : { ok: false, detail: 'Set FORM_SCHEMA.endpoint to your deployed Apps Script /exec URL.' };
+      },
+    },
+    {
+      name: 'Backend health',
+      expected: 'Returns status: ok.',
+      run: async () => requestJson(`${FORM_SCHEMA.endpoint}?action=health`, data =>
+        data?.status === 'ok' ? { ok: true, detail: data.message || 'Backend is running.' } : { ok: false, detail: data?.message || 'Unexpected health response.' }),
+    },
+    {
+      name: 'Shared topics API',
+      expected: 'Returns status: ok and a topics array.',
+      run: async () => requestJson(`${FORM_SCHEMA.endpoint}?action=getTopics`, data => {
+        if (data?.status !== 'ok' || !Array.isArray(data.topics)) {
+          return { ok: false, detail: data?.message || 'Topics API did not return a topics array.' };
+        }
+        return { ok: true, detail: `${data.topics.length} shared topic${data.topics.length === 1 ? '' : 's'} found.` };
+      }),
+    },
+    {
+      name: 'Browser storage',
+      expected: 'Local storage is available for drafts and cached topics.',
+      run: async () => {
+        try {
+          const key = 'formcraft:health-check';
+          localStorage.setItem(key, 'ok');
+          const ok = localStorage.getItem(key) === 'ok';
+          localStorage.removeItem(key);
+          return ok ? { ok: true, detail: 'Local storage is available.' } : { ok: false, detail: 'The browser did not retain a test value.' };
+        } catch (error) {
+          return { ok: false, detail: error.message || 'Local storage is blocked.' };
+        }
+      },
+    },
+  ];
+
+  async function requestJson(url, evaluate) {
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) return { ok: false, detail: `Request failed with HTTP ${response.status}.` };
+      return evaluate(await response.json());
+    } catch (error) {
+      return { ok: false, detail: error.message || 'Network request failed.' };
+    }
+  }
+
+  function renderCheck(check, result) {
+    return `<div class="p-5 flex gap-3">
+      <span class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center font-semibold ${result.ok ? 'bg-[var(--success)]/15 text-[var(--success)]' : 'bg-[var(--danger)]/15 text-[var(--danger)]'}">${result.ok ? '✓' : '!'}</span>
+      <div class="min-w-0">
+        <h3 class="font-semibold text-sm">${Utils.escapeHTML(check.name)}</h3>
+        <p class="field-hint text-sm mt-0.5 break-words">${Utils.escapeHTML(result.detail)}</p>
+        <p class="text-xs mt-1 text-[var(--ink-soft)]">Expected: ${Utils.escapeHTML(check.expected)}</p>
+      </div>
+    </div>`;
+  }
+
+  async function runChecks() {
+    const button = document.getElementById('btn-run-checks');
+    const list = document.getElementById('check-list');
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner"></span> Checking…';
+    list.innerHTML = '<div class="p-5 field-hint text-sm">Running checks…</div>';
+
+    const results = await Promise.all(checks.map(async check => ({ check, result: await check.run() })));
+    list.innerHTML = results.map(({ check, result }) => renderCheck(check, result)).join('');
+    const failed = results.filter(({ result }) => !result.ok).length;
+    document.getElementById('overall-icon').textContent = failed ? '!' : '✓';
+    document.getElementById('overall-icon').className = `w-10 h-10 rounded-full flex items-center justify-center text-xl ${failed ? 'bg-[var(--danger)]/15 text-[var(--danger)]' : 'bg-[var(--success)]/15 text-[var(--success)]'}`;
+    document.getElementById('overall-title').textContent = failed ? `${failed} check${failed === 1 ? '' : 's'} need attention` : 'All checks passed';
+    document.getElementById('overall-message').textContent = failed
+      ? 'Read the failed check and recommended action below.'
+      : 'The public backend and browser prerequisites are ready.';
+    button.disabled = false;
+    button.textContent = 'Run checks';
+  }
+
+  document.getElementById('btn-run-checks').addEventListener('click', runChecks);
+  runChecks();
+</script>
+</body>
+</html>
