@@ -533,7 +533,7 @@ const AdminApp = (() => {
     Utils.toast(`Editing topic "${topic.name}".`, 'info');
   }
 
-  function createTopic() {
+  async function createTopic() {
     const name = (els.topicName?.value || '').trim();
     const typedSlug = (els.topicSlug?.value || '').trim();
     if (!name) {
@@ -555,46 +555,49 @@ const AdminApp = (() => {
       if (renamed.some(item => item.slug === slug)) {
         let suffix = 2;
         let candidate = `${slug}-${suffix}`;
-        while (renamed.some(item => item.slug === candidate)) {
-          suffix += 1;
-          candidate = `${slug}-${suffix}`;
-        }
+        while (renamed.some(item => item.slug === candidate)) { suffix += 1; candidate = `${slug}-${suffix}`; }
         slug = candidate;
       }
     } else if (editingTopicSlug && existingIndex >= 0) {
-      // keep the same slug while updating this topic
+      // keep same slug
     } else {
       const exists = topics.some(item => item.slug === slug);
       if (exists) {
         let suffix = 2;
         let candidate = `${slug}-${suffix}`;
-        while (topics.some(item => item.slug === candidate)) {
-          suffix += 1;
-          candidate = `${slug}-${suffix}`;
-        }
+        while (topics.some(item => item.slug === candidate)) { suffix += 1; candidate = `${slug}-${suffix}`; }
         slug = candidate;
       }
     }
 
     const selected = Array.from(els.topicFieldList?.querySelectorAll('input[type="checkbox"]:checked') || []).map(item => item.value);
     const nextTopics = existingIndex >= 0
-      ? topics.map((item, index) => index === existingIndex ? { ...item, name, slug, fieldIds: selected } : item)
+      ? topics.map((item, i) => i === existingIndex ? { ...item, name, slug, fieldIds: selected } : item)
       : [...topics, { name, slug, fieldIds: selected, createdAt: new Date().toISOString() }];
 
-    Utils.setTopics(nextTopics);
+    // Save to server first
+    if (els.btnCreateTopic) { els.btnCreateTopic.disabled = true; els.btnCreateTopic.innerHTML = '<span class="spinner"></span> Saving…'; }
+    try {
+      await Utils.saveTopicsToServer(nextTopics, token());
+      Utils.toast(existingIndex >= 0 ? `Topic "${name}" updated.` : `Topic "${name}" created.`, 'success');
+    } catch (e) {
+      Utils.toast('Server save failed: ' + (e.message || e) + ' — saved locally only.', 'error');
+      Utils.setTopics(nextTopics); // fallback to localStorage
+    } finally {
+      if (els.btnCreateTopic) { els.btnCreateTopic.disabled = false; syncTopicEditorUI(); }
+    }
+
     Utils.setActiveTopicSlug(slug);
     Utils.setVisibleFieldIds(selected);
-
     editingTopicSlug = null;
-    els.topicName.value = '';
-    els.topicSlug.value = '';
+    if (els.topicName) els.topicName.value = '';
+    if (els.topicSlug) els.topicSlug.value = '';
     renderTopicFieldList();
     renderTopicsList();
     renderTopicDashboardSelector();
     renderFormFieldConfig();
     renderInsights();
     syncTopicEditorUI();
-    Utils.toast(existingIndex >= 0 ? `Topic "${name}" updated.` : `Topic "${name}" created.`, 'success');
   }
 
   function applyTopic(slug) {
@@ -611,23 +614,30 @@ const AdminApp = (() => {
     Utils.toast(`Applied topic "${topic.name}".`, 'success');
   }
 
-  function deleteTopic(slug) {
+  async function deleteTopic(slug) {
     if (!confirm('Delete this topic?')) return;
+
+    // Optimistic local update
     const nextTopics = Utils.getTopics().filter(item => item.slug !== slug);
-    Utils.setTopics(nextTopics);
     if (editingTopicSlug === slug) editingTopicSlug = null;
     const activeSlug = Utils.getActiveTopicSlug();
-    if (activeSlug === slug) {
-      Utils.setActiveTopicSlug('');
-      Utils.setVisibleFieldIds([]);
+    if (activeSlug === slug) { Utils.setActiveTopicSlug(''); Utils.setVisibleFieldIds([]); }
+
+    // Persist to server
+    try {
+      await Utils.deleteTopicFromServer(slug, token());
+      Utils.toast('Topic deleted.', 'success');
+    } catch (e) {
+      Utils.toast('Server delete failed: ' + (e.message || e) + ' — removed locally.', 'error');
+      Utils.setTopics(nextTopics); // fallback
     }
+
     renderTopicFieldList();
     renderTopicsList();
     renderTopicDashboardSelector();
     renderFormFieldConfig();
     renderInsights();
     syncTopicEditorUI();
-    Utils.toast('Topic deleted.', 'success');
   }
 
   function renderFeatureConfig() {
@@ -748,6 +758,19 @@ const AdminApp = (() => {
     });
   }
 
+  async function loadTopicsFromServer() {
+    const serverTopics = await Utils.fetchTopicsFromServer();
+    if (serverTopics !== null) {
+      const activeTopic = serverTopics.find(t => t.slug === Utils.getActiveTopicSlug());
+      if (activeTopic) Utils.setVisibleFieldIds(activeTopic.fieldIds || []);
+      renderTopicFieldList();
+      renderTopicsList();
+      renderTopicDashboardSelector();
+      renderFormFieldConfig();
+      renderInsights();
+    }
+  }
+
   function init() {
     cacheEls();
     bindEvents();
@@ -762,7 +785,9 @@ const AdminApp = (() => {
     renderFormFieldConfig();
     renderFeatureConfig();
     renderInsights();
-    // Probe backend early so we can show helpful errors for network/CORS/deployment issues.
+    // Load topics from server (public GET, no token needed) on startup
+    loadTopicsFromServer();
+    // Probe backend; auto-login if token cached
     ping().then(ok => { if (ok && token()) login(); });
   }
 

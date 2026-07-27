@@ -15,6 +15,7 @@
  */
 
 const SHEET_NAME = 'Submissions';
+const TOPICS_PROP_KEY = 'formcraft_topics'; // ScriptProperties key for topic storage
 
 // Columns that always exist, in order, before the dynamic per-field columns.
 const BASE_COLUMNS = ['Submission ID', 'Timestamp', 'IP', 'Browser', 'Name', 'Email', 'Phone'];
@@ -42,6 +43,19 @@ function doGet(e) {
       return jsonOut({ status: 'ok', submissionId: e.parameter.id, submissionStatus: row.Status || 'New' });
     }
 
+    // ── Topic actions (public reads, no token needed) ──
+    if (action === 'gettopics') {
+      return jsonOut({ status: 'ok', topics: loadTopics() });
+    }
+
+    if (action === 'gettopic') {
+      const slug = (e.parameter.slug || '').trim();
+      if (!slug) return jsonOut({ status: 'error', message: 'slug required.' });
+      const found = loadTopics().find(t => t.slug === slug);
+      if (!found) return jsonOut({ status: 'error', message: 'Topic not found.' });
+      return jsonOut({ status: 'ok', topic: found });
+    }
+
     return jsonOut({ status: 'error', message: 'Unknown action: ' + action });
   } catch (err) {
     return jsonOut({ status: 'error', message: err.message });
@@ -63,6 +77,24 @@ function doPost(e) {
       Validation.verifyAdminToken(payload.token);
       deleteSubmissionRow(payload.submissionId);
       return jsonOut({ status: 'ok' });
+    }
+
+    // ── Topic write actions (admin only) ──
+    if (action === 'settopics') {
+      Validation.verifyAdminToken(payload.token);
+      const topics = payload.topics;
+      if (!Array.isArray(topics)) return jsonOut({ status: 'error', message: 'topics must be an array.' });
+      saveTopics(topics);
+      return jsonOut({ status: 'ok', topics: topics });
+    }
+
+    if (action === 'deletetopic') {
+      Validation.verifyAdminToken(payload.token);
+      const slug = (payload.slug || '').trim();
+      if (!slug) return jsonOut({ status: 'error', message: 'slug required.' });
+      const next = loadTopics().filter(t => t.slug !== slug);
+      saveTopics(next);
+      return jsonOut({ status: 'ok', topics: next });
     }
 
     // No action => this is a public form submission
@@ -229,6 +261,33 @@ function deleteSubmissionRow(submissionId) {
   const rowIndex = findRowIndexBySubmissionId(submissionId);
   if (rowIndex === -1) throw new Error('Submission not found.');
   getSheet().deleteRow(rowIndex);
+}
+
+/* ============================== TOPIC STORAGE ============================== */
+
+/**
+ * Load topics array from ScriptProperties.
+ * Falls back to empty array if none saved yet.
+ */
+function loadTopics() {
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty(TOPICS_PROP_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * Persist topics array to ScriptProperties.
+ * ScriptProperties values are strings, max 9 KB per property.
+ * For larger sets consider Sheets storage instead.
+ */
+function saveTopics(topics) {
+  const json = JSON.stringify(topics || []);
+  PropertiesService.getScriptProperties().setProperty(TOPICS_PROP_KEY, json);
 }
 
 /* ============================== RESPONSE HELPER ============================== */

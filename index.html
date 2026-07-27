@@ -388,8 +388,18 @@
 
   document.getElementById('step-body-form').addEventListener('submit', e => e.preventDefault());
 
+  // 1) Render immediately from localStorage cache (fast, may be stale)
   applyTopicFromUrl();
   renderTopicCards();
+
+  // 2) Fetch fresh topics from server, then re-render
+  Utils.fetchTopicsFromServer().then(serverTopics => {
+    if (serverTopics !== null) {
+      // Re-apply topic from URL now that server data is loaded
+      applyTopicFromUrl();
+      renderTopicCards();
+    }
+  });
 </script>
 </body>
 </html>

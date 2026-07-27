@@ -140,6 +140,62 @@ const Utils = (() => {
     } catch {}
   }
 
+  /* ── Server-backed topic API helpers ──
+   * These functions talk to the Apps Script endpoint.
+   * FORM_SCHEMA.endpoint must be defined (loaded from schema.js).
+   * localStorage is used only as a local cache for speed; the server is the source of truth.
+   */
+
+  function _endpoint() {
+    return (typeof FORM_SCHEMA !== 'undefined' && FORM_SCHEMA.endpoint) || '';
+  }
+
+  async function fetchTopicsFromServer() {
+    const ep = _endpoint();
+    if (!ep) return null;
+    try {
+      const res = await fetch(`${ep}?action=getTopics`);
+      const data = await res.json();
+      if (data.status === 'ok' && Array.isArray(data.topics)) {
+        // update local cache
+        setTopics(data.topics);
+        return data.topics;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function saveTopicsToServer(topics, adminToken) {
+    const ep = _endpoint();
+    if (!ep) throw new Error('No endpoint configured.');
+    const res = await fetch(ep, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'setTopics', token: adminToken, topics }),
+    });
+    const data = await res.json();
+    if (data.status !== 'ok') throw new Error(data.message || 'Server error saving topics.');
+    setTopics(data.topics || topics); // update cache
+    return data.topics || topics;
+  }
+
+  async function deleteTopicFromServer(slug, adminToken) {
+    const ep = _endpoint();
+    if (!ep) throw new Error('No endpoint configured.');
+    const res = await fetch(ep, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'deleteTopic', token: adminToken, slug }),
+    });
+    const data = await res.json();
+    if (data.status !== 'ok') throw new Error(data.message || 'Server error deleting topic.');
+    const next = data.topics || getTopics().filter(t => t.slug !== slug);
+    setTopics(next); // update cache
+    return next;
+  }
+
   function buildVisibleSchema(schema, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
     const visibleIds = getVisibleFieldIds(storage);
     const visibleSet = new Set(visibleIds || []);
@@ -261,6 +317,10 @@ const Utils = (() => {
     setTopics,
     getActiveTopicSlug,
     setActiveTopicSlug,
+    // Server-backed topic API
+    fetchTopicsFromServer,
+    saveTopicsToServer,
+    deleteTopicFromServer,
     getFeatureFlags,
     setFeatureFlags,
     isFeatureEnabled,
