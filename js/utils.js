@@ -95,6 +95,51 @@ const Utils = (() => {
     } catch {}
   }
 
+  function slugify(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+  }
+
+  function getTopics(storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    try {
+      const raw = storage?.getItem('formcraft:topics');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function getTopicBySlug(slug, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    if (!slug) return null;
+    return getTopics(storage).find(item => item.slug === slug) || null;
+  }
+
+  function setTopics(topics, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    try {
+      storage?.setItem('formcraft:topics', JSON.stringify(topics || []));
+    } catch {}
+  }
+
+  function getActiveTopicSlug(storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    try {
+      return storage?.getItem('formcraft:activeTopicSlug') || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function setActiveTopicSlug(slug, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+    try {
+      storage?.setItem('formcraft:activeTopicSlug', slug || '');
+    } catch {}
+  }
+
   function buildVisibleSchema(schema, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
     const visibleIds = getVisibleFieldIds(storage);
     const visibleSet = new Set(visibleIds || []);
@@ -130,7 +175,8 @@ const Utils = (() => {
     phone: v => {
       if (!v) return true;
       const digits = String(v).replace(/\D/g, '');
-      return /^(?:88)?0?1[3-9]\d{8}$/.test(digits);
+      if (!digits) return false;
+      return /^01[3-9]\d{8}$/.test(digits) || /^8801[3-9]\d{8}$/.test(digits);
     },
     number: v => !v || !isNaN(Number(v)),
     minLength: (v, n) => !v || String(v).length >= n,
@@ -144,7 +190,8 @@ const Utils = (() => {
   function maskPhone(value) {
     const digits = String(value || '').replace(/\D/g, '');
     if (!digits) return '';
-    const normalized = digits.replace(/^880/, '').replace(/^0/, '');
+    const normalized = digits.startsWith('880') ? digits.slice(3) : digits.replace(/^0/, '');
+    if (!normalized) return '';
     if (normalized.length <= 4) return `+880 ${normalized}`;
     if (normalized.length <= 6) return `+880 ${normalized.slice(0, 4)}-${normalized.slice(4)}`;
     return `+880 ${normalized.slice(0, 4)}-${normalized.slice(4, 10)}`;
@@ -199,5 +246,30 @@ const Utils = (() => {
     } catch { return iso; }
   }
 
-  return { escapeHTML, sanitizeInput, debounce, getVisibleFieldIds, setVisibleFieldIds, buildVisibleSchema, getCustomFields, setCustomFields, getFeatureFlags, setFeatureFlags, isFeatureEnabled, uuid, validators, maskPhone, toast, fileToBase64, formatBytes, formatDate };
+  return {
+    escapeHTML,
+    sanitizeInput,
+    debounce,
+    getVisibleFieldIds,
+    setVisibleFieldIds,
+    buildVisibleSchema,
+    getCustomFields,
+    setCustomFields,
+    slugify,
+    getTopics,
+    getTopicBySlug,
+    setTopics,
+    getActiveTopicSlug,
+    setActiveTopicSlug,
+    getFeatureFlags,
+    setFeatureFlags,
+    isFeatureEnabled,
+    uuid,
+    validators,
+    maskPhone,
+    toast,
+    fileToBase64,
+    formatBytes,
+    formatDate
+  };
 })();

@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Project Intake Form · FormCraft</title>
-<meta name="description" content="A premium, accessible multi-step intake form built with FormCraft.">
+<title>FormCraft — Topic-Based Intake Forms</title>
+<meta name="description" content="Browse topics and fill out the relevant intake form. Each topic has its own shareable link.">
 <meta name="theme-color" content="#0F766E">
 
 <!-- Preconnect + fonts -->
@@ -17,6 +17,113 @@
 
 <link rel="stylesheet" href="css/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📝</text></svg>">
+
+<style>
+  /* ── Topic card grid ── */
+  .topic-card {
+    display: block;
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--surface-border);
+    padding: 1.25rem 1.4rem;
+    background: var(--surface);
+    backdrop-filter: blur(12px);
+    transition: transform .22s cubic-bezier(.34,1.56,.64,1), border-color .2s ease, box-shadow .2s ease;
+    text-decoration: none;
+    color: inherit;
+    position: relative;
+    overflow: hidden;
+  }
+  .topic-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 6%, transparent), transparent 60%);
+    opacity: 0;
+    transition: opacity .25s ease;
+  }
+  .topic-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-pop); border-color: color-mix(in srgb, var(--primary) 50%, transparent); }
+  .topic-card:hover::before { opacity: 1; }
+  .topic-card.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--surface)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent), var(--shadow-soft); }
+  .topic-card.active::before { opacity: 1; }
+
+  .topic-slug-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    font-size: .7rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
+    border-radius: 999px;
+    padding: .2rem .65rem;
+    letter-spacing: .02em;
+  }
+
+  .topic-field-count {
+    font-size: .72rem;
+    color: var(--ink-soft);
+  }
+
+  /* ── Active topic banner ── */
+  .active-topic-banner {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 10%, var(--surface)), color-mix(in srgb, var(--primary-2) 8%, var(--surface)));
+    border: 1.5px solid color-mix(in srgb, var(--primary) 30%, transparent);
+    border-radius: var(--radius-md);
+    padding: .85rem 1.2rem;
+  }
+
+  /* ── Hero section ── */
+  .hero-eyebrow {
+    font-size: .75rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--primary);
+    font-weight: 600;
+  }
+
+  /* ── No topics placeholder ── */
+  .no-topics-placeholder {
+    border: 1.5px dashed var(--surface-border);
+    border-radius: var(--radius-md);
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+  }
+
+  /* ── Form area enters with a slide ── */
+  #form-shell {
+    animation: formReveal .45s cubic-bezier(.2,.8,.2,1);
+  }
+  @keyframes formReveal {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Share URL copy box ── */
+  .share-url-box {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    background: var(--surface);
+    border: 1.5px solid var(--surface-border);
+    border-radius: var(--radius-sm);
+    padding: .55rem .9rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .78rem;
+    color: var(--ink-soft);
+  }
+  .share-url-box span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .copy-btn {
+    display: inline-flex; align-items: center; gap: .3rem;
+    padding: .3rem .7rem; border-radius: var(--radius-sm);
+    font-size: .72rem; font-weight: 600;
+    background: linear-gradient(135deg, var(--primary), var(--primary-2));
+    color: #fff; border: none; cursor: pointer; transition: opacity .15s ease, transform .15s ease;
+    flex-shrink: 0;
+  }
+  .copy-btn:hover { opacity: .9; transform: scale(1.03); }
+  .copy-btn:active { transform: scale(.97); }
+</style>
 </head>
 <body class="antialiased">
 <div class="bg-ambient" aria-hidden="true"></div>
@@ -26,19 +133,61 @@
 <a href="#form-root" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 btn btn-primary">Skip to form</a>
 
 <header class="max-w-3xl mx-auto px-4 sm:px-6 pt-8 flex items-center justify-between">
-  <div class="flex items-center gap-2.5">
+  <a href="index.html" class="flex items-center gap-2.5" style="text-decoration:none;color:inherit">
     <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-2)] flex items-center justify-center text-white font-display font-semibold shadow-md">F</div>
     <span class="font-display text-lg font-medium tracking-tight">FormCraft</span>
+  </a>
+  <div class="flex items-center gap-2">
+    <a href="admin.html" class="btn btn-ghost text-sm">Admin ↗</a>
+    <button type="button" data-theme-toggle aria-pressed="false" aria-label="Toggle dark mode"
+      class="w-10 h-10 rounded-full flex items-center justify-center glass card hover:scale-105 transition">
+      <svg class="dark:hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg class="hidden dark:block" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+    </button>
   </div>
-  <button type="button" data-theme-toggle aria-pressed="false" aria-label="Toggle dark mode"
-    class="w-10 h-10 rounded-full flex items-center justify-center glass card hover:scale-105 transition">
-    <svg class="dark:hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-    <svg class="hidden dark:block" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-  </button>
 </header>
 
-<main id="form-root" class="max-w-3xl mx-auto px-4 sm:px-6 py-10">
+<main id="form-root" class="max-w-3xl mx-auto px-4 sm:px-6 py-8">
 
+  <!-- ═══════════════════════════════════════════════
+       SECTION A — Topic browser (shown always)
+  ════════════════════════════════════════════════ -->
+  <section id="topic-browser" class="mb-8">
+
+    <!-- Hero heading -->
+    <div class="mb-5">
+      <p class="hero-eyebrow mb-1.5">Choose a topic</p>
+      <h1 class="font-display text-3xl md:text-4xl font-medium tracking-tight mb-1.5" id="page-title">What would you like to apply for?</h1>
+      <p class="field-hint">Each topic shows a tailored set of fields. Select one below — its shareable link is embedded in the card.</p>
+    </div>
+
+    <!-- Active-topic banner (visible only when a topic is active from URL) -->
+    <div id="active-topic-banner" class="active-topic-banner mb-5 hidden">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <p class="text-sm font-semibold" id="banner-topic-name">—</p>
+          <p class="field-hint text-xs" id="banner-topic-slug">—</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="share-url-box" style="max-width:260px">
+            <span id="banner-share-url">—</span>
+            <button class="copy-btn" id="banner-copy-btn" type="button">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              Copy
+            </button>
+          </div>
+          <a href="index.html" class="btn btn-ghost !py-1.5 !px-3 text-xs">View all</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Topic cards grid -->
+    <div id="topic-list-public" class="grid gap-3 sm:grid-cols-2"></div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════
+       SECTION B — Draft + Error banners
+  ════════════════════════════════════════════════ -->
   <!-- Draft restore banner -->
   <div id="draft-banner" class="hidden mb-6 glass card p-4 flex items-center justify-between gap-3 flex-wrap">
     <p class="text-sm">You have an unfinished draft from <span data-draft-time class="font-mono"></span>.</p>
@@ -54,10 +203,13 @@
     <span data-error-message></span>
   </div>
 
+  <!-- ═══════════════════════════════════════════════
+       SECTION C — Form shell
+  ════════════════════════════════════════════════ -->
   <div id="form-shell">
     <!-- Intro -->
-    <div id="form-intro" class="mb-8">
-      <h1 class="font-display text-3xl md:text-4xl font-medium tracking-tight mb-2">${'' /* replaced below */}</h1>
+    <div id="form-intro" class="mb-6 hidden">
+      <h2 class="font-display text-2xl md:text-3xl font-medium tracking-tight mb-1"></h2>
     </div>
 
     <div class="glass card p-6 md:p-9 perforated">
@@ -66,7 +218,7 @@
       <div class="progress-track mb-1"><div id="progress-fill" class="progress-fill" style="width:0%"></div></div>
       <p id="progress-label" class="field-hint mb-8"></p>
 
-      <!-- Honeypot (hidden from real users, visible to bots) -->
+      <!-- Honeypot -->
       <div class="absolute -left-[9999px] w-px h-px overflow-hidden" aria-hidden="true">
         <label for="hp_field">Leave this field empty</label>
         <input type="text" id="hp_field" name="website_hp" tabindex="-1" autocomplete="off">
@@ -102,6 +254,7 @@
       <a href="success.html" class="btn btn-ghost">View confirmation page</a>
     </div>
   </div>
+
 </main>
 
 <footer class="max-w-3xl mx-auto px-4 sm:px-6 pb-10 text-center field-hint">
@@ -114,9 +267,129 @@
 <script src="js/fields.js"></script>
 <script src="js/form.js"></script>
 <script>
-  document.querySelector('#form-intro h1').textContent = FORM_SCHEMA.title;
-  document.querySelector('#form-intro h1').insertAdjacentHTML('afterend', `<p class="field-hint">${Utils.escapeHTML(FORM_SCHEMA.subtitle)}</p>`);
+  /* ──────────────────────────────────────────────
+     Index page bootstrap — topic routing + UI
+  ────────────────────────────────────────────── */
+
+  function getTopicFromUrl() {
+    return new URLSearchParams(window.location.search).get('topic') || '';
+  }
+
+  function buildShareUrl(slug) {
+    return `${window.location.origin}${window.location.pathname}?topic=${encodeURIComponent(slug)}`;
+  }
+
+  function copyToClipboard(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.innerHTML;
+      btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg> Copied!`;
+      btn.style.background = 'linear-gradient(135deg,var(--success),#16a34a)';
+      setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; }, 2000);
+    });
+  }
+
+  function renderTopicCards() {
+    const container = document.getElementById('topic-list-public');
+    const topics = Utils.getTopics() || [];
+    if (!container) return;
+
+    if (!topics.length) {
+      container.innerHTML = `
+        <div class="no-topics-placeholder sm:col-span-2">
+          <svg width="40" height="40" class="mx-auto mb-3 opacity-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 12h6M12 9v6"/></svg>
+          <p class="font-medium mb-1">No topics yet</p>
+          <p class="field-hint text-sm">Head to the <a href="admin.html" class="text-[var(--primary)] underline">admin panel</a> to create your first topic.</p>
+        </div>`;
+      return;
+    }
+
+    const slug = getTopicFromUrl();
+    const currentSlug = slug || Utils.getActiveTopicSlug();
+
+    container.innerHTML = topics.map(topic => {
+      const isActive = currentSlug && currentSlug === topic.slug;
+      const shareUrl = buildShareUrl(topic.slug);
+      const fieldCount = topic.fieldIds?.length || 0;
+
+      return `
+        <a href="${shareUrl}" id="topic-card-${Utils.escapeHTML(topic.slug)}" class="topic-card${isActive ? ' active' : ''}" data-topic-slug="${Utils.escapeHTML(topic.slug)}">
+          <div class="flex items-start justify-between gap-2 mb-2.5">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+              style="background:linear-gradient(135deg,var(--primary),var(--primary-2))">
+              ${Utils.escapeHTML(topic.name.charAt(0).toUpperCase())}
+            </div>
+            ${isActive ? `<span style="font-size:.65rem;font-weight:700;padding:.15rem .5rem;border-radius:999px;background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary);letter-spacing:.04em;text-transform:uppercase">Active</span>` : ''}
+          </div>
+          <h3 class="font-semibold text-sm mb-1">${Utils.escapeHTML(topic.name)}</h3>
+          <div class="flex items-center justify-between gap-2 flex-wrap mt-2">
+            <span class="topic-slug-pill">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+              /${Utils.escapeHTML(topic.slug)}
+            </span>
+            <span class="topic-field-count">${fieldCount} field${fieldCount !== 1 ? 's' : ''}</span>
+          </div>
+        </a>`;
+    }).join('');
+
+    // Attach copy-on-right-click / long-press isn't needed — each card IS the link.
+    // We show the share URL in the active banner instead.
+  }
+
+  function renderActiveBanner(topic) {
+    const banner = document.getElementById('active-topic-banner');
+    if (!banner) return;
+    if (!topic) { banner.classList.add('hidden'); return; }
+
+    const shareUrl = buildShareUrl(topic.slug);
+    document.getElementById('banner-topic-name').textContent = topic.name;
+    document.getElementById('banner-topic-slug').textContent = `/${topic.slug}`;
+    document.getElementById('banner-share-url').textContent = shareUrl;
+
+    const copyBtn = document.getElementById('banner-copy-btn');
+    copyBtn.onclick = () => copyToClipboard(shareUrl, copyBtn);
+
+    banner.classList.remove('hidden');
+  }
+
+  function applyTopicFromUrl() {
+    const slug = getTopicFromUrl();
+    if (!slug) {
+      const activeSlug = Utils.getActiveTopicSlug();
+      if (activeSlug) {
+        const topic = Utils.getTopicBySlug(activeSlug);
+        if (topic) Utils.setVisibleFieldIds(topic.fieldIds || []);
+      }
+      renderActiveBanner(null);
+      return;
+    }
+
+    const topic = Utils.getTopicBySlug(slug);
+    if (!topic) {
+      renderActiveBanner(null);
+      return;
+    }
+    Utils.setActiveTopicSlug(topic.slug);
+    Utils.setVisibleFieldIds(topic.fieldIds || []);
+    renderActiveBanner(topic);
+
+    // Update page title to reflect topic
+    const h1 = document.getElementById('page-title');
+    if (h1) h1.textContent = `Applying for: ${topic.name}`;
+  }
+
+  // Form intro
+  const formIntro = document.querySelector('#form-intro h2');
+  if (formIntro) formIntro.textContent = FORM_SCHEMA.title;
+  const formIntroDiv = document.getElementById('form-intro');
+  if (formIntroDiv) {
+    formIntroDiv.insertAdjacentHTML('beforeend', `<p class="field-hint">${Utils.escapeHTML(FORM_SCHEMA.subtitle)}</p>`);
+    formIntroDiv.classList.remove('hidden');
+  }
+
   document.getElementById('step-body-form').addEventListener('submit', e => e.preventDefault());
+
+  applyTopicFromUrl();
+  renderTopicCards();
 </script>
 </body>
 </html>

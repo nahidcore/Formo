@@ -29,7 +29,7 @@ const FieldRenderer = (() => {
         placeholder="${Utils.escapeHTML(f.placeholder || 'name@example.com')}" autocomplete="email" aria-required="${!!f.required}">`),
 
     phone: f => wrap(f, `<input class="field-input" id="f_${f.id}" name="${f.id}" type="tel" inputmode="numeric"
-        placeholder="${Utils.escapeHTML(f.placeholder || '(555) 123-4567')}" aria-required="${!!f.required}">`),
+        placeholder="${Utils.escapeHTML(f.placeholder || '+880 1712-345678')}" aria-required="${!!f.required}">`),
 
     url: f => wrap(f, `<input class="field-input" id="f_${f.id}" name="${f.id}" type="url"
         placeholder="${Utils.escapeHTML(f.placeholder || 'https://example.com')}" aria-required="${!!f.required}">`),

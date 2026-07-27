@@ -224,7 +224,7 @@ class FormEngine {
     if (field.required && !Utils.validators.required(v)) error = `${field.label} is required.`;
     else if (field.type === 'email' && !Utils.validators.email(v)) error = 'Enter a valid email address.';
     else if (field.type === 'url' && v && !Utils.validators.url(v)) error = 'Enter a valid URL starting with http(s)://';
-    else if (field.type === 'phone' && v && !Utils.validators.phone(v)) error = 'Enter a valid phone number.';
+    else if (field.type === 'phone' && v && !Utils.validators.phone(v)) error = 'Enter a valid Bangladesh phone number.';
     else if (field.type === 'number' && v !== '' && !Utils.validators.number(v)) error = 'Enter a valid number.';
     else if (field.minLength && v && !Utils.validators.minLength(v, field.minLength)) error = `Minimum ${field.minLength} characters.`;
     else if (field.min !== undefined && v !== '' && !Utils.validators.min(v, field.min)) error = `Minimum value is ${field.min}.`;
