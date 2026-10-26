@@ -10,8 +10,8 @@ const FieldRenderer = (() => {
     const req = field.required ? '<span class="text-[var(--danger)] ml-0.5">*</span>' : '';
     const hint = field.hint ? `<p class="field-hint mt-1">${Utils.escapeHTML(field.hint)}</p>` : '';
     return `
-      <div class="field-group mb-5" data-field-id="${field.id}" data-field-type="${field.type}">
-        <label class="field-label block mb-2" for="f_${field.id}">${Utils.escapeHTML(field.label)}${req}</label>
+      <div class="field-group mb-5" data-field-id="${Utils.escapeHTML(field.id)}" data-field-type="${Utils.escapeHTML(field.type)}">
+        <label class="field-label block mb-2" for="f_${Utils.escapeHTML(field.id)}">${Utils.escapeHTML(field.label)}${req}</label>
         ${innerHTML}
         ${hint}
         ${extra}
@@ -57,13 +57,13 @@ const FieldRenderer = (() => {
     dropdown: f => wrap(f, `
       <select class="field-input" id="f_${f.id}" name="${f.id}" aria-required="${!!f.required}">
         <option value="" disabled selected>Choose an option…</option>
-        ${f.options.map(o => `<option value="${Utils.escapeHTML(o)}">${Utils.escapeHTML(o)}</option>`).join('')}
+        ${(Array.isArray(f.options) ? f.options : []).map(o => `<option value="${Utils.escapeHTML(o)}">${Utils.escapeHTML(o)}</option>`).join('')}
       </select>`),
 
     radio: f => wrap(f, `
       <div class="grid gap-2" role="radiogroup" aria-required="${!!f.required}">
         ${f.options.map((o, i) => `
-          <label class="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] cursor-pointer hover:bg-[var(--surface)] transition">
+          <label class="choice-option flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] cursor-pointer hover:bg-[var(--surface)] transition">
             <input type="radio" name="${f.id}" value="${Utils.escapeHTML(o)}" id="f_${f.id}_${i}" class="accent-[var(--primary)] w-4 h-4">
             <span class="text-sm">${Utils.escapeHTML(o)}</span>
           </label>`).join('')}
@@ -72,7 +72,7 @@ const FieldRenderer = (() => {
     checkbox: f => wrap(f, `
       <div class="grid gap-2" role="group" aria-required="${!!f.required}">
         ${f.options.map((o, i) => `
-          <label class="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] cursor-pointer hover:bg-[var(--surface)] transition">
+          <label class="choice-option flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-[var(--surface-border)] cursor-pointer hover:bg-[var(--surface)] transition">
             <input type="checkbox" name="${f.id}" value="${Utils.escapeHTML(o)}" id="f_${f.id}_${i}" class="accent-[var(--primary)] w-4 h-4">
             <span class="text-sm">${Utils.escapeHTML(o)}</span>
           </label>`).join('')}
@@ -114,9 +114,9 @@ const FieldRenderer = (() => {
       </div>
       <input type="hidden" id="f_${f.id}" name="${f.id}" value="false">`),
 
-    image: f => renderDropzone(f, 'image/*', false, '🖼️'),
-    pdf: f => renderDropzone(f, 'application/pdf', false, '📄'),
-    files: f => renderDropzone(f, f.accept || '*', true, '📎'),
+    image: f => renderDropzone(f, f.accept || 'image/*', !!f.multiple, '🖼️'),
+    pdf: f => renderDropzone(f, f.accept || 'application/pdf', !!f.multiple, '📄'),
+    files: f => renderDropzone(f, f.accept || '*', !!f.multiple, '📎'),
 
     signature: f => wrap(f, `
       <canvas class="sig-pad" id="f_${f.id}" width="600" height="180"></canvas>
@@ -128,7 +128,7 @@ const FieldRenderer = (() => {
   function renderDropzone(f, accept, multiple, icon) {
     return wrap(f, `
       <div class="dropzone" data-dropzone="${f.id}" tabindex="0" role="button" aria-label="Upload ${Utils.escapeHTML(f.label)}">
-        <input type="file" class="hidden" id="f_${f.id}" accept="${accept}" ${multiple ? 'multiple' : ''}>
+        <input type="file" class="hidden" id="f_${f.id}" accept="${Utils.escapeHTML(accept)}" ${multiple ? 'multiple' : ''}>
         <div class="text-2xl mb-1">${icon}</div>
         <p class="text-sm font-medium">Drop file${multiple ? 's' : ''} here or <span class="text-[var(--primary)] underline">browse</span></p>
         <p class="text-xs text-[var(--ink-soft)] mt-1">Max ${f.maxSizeMB || 10}MB ${multiple ? 'per file' : ''}</p>
@@ -166,6 +166,8 @@ const FieldRenderer = (() => {
     if (pwToggle) {
       pwToggle.addEventListener('click', () => {
         input.type = input.type === 'password' ? 'text' : 'password';
+        const showing = input.type === 'text';
+        pwToggle.setAttribute('aria-label', showing ? 'Hide password' : 'Show password');
       });
     }
 
@@ -185,7 +187,11 @@ const FieldRenderer = (() => {
     if (field.type === 'rating') {
       const stars = el.querySelectorAll('.star');
       const hidden = el.querySelector(`#f_${field.id}`);
-      const paint = n => stars.forEach(s => s.classList.toggle('filled', +s.dataset.star <= n));
+      const paint = n => stars.forEach(s => {
+        const selected = +s.dataset.star <= n;
+        s.classList.toggle('filled', selected);
+        s.setAttribute('aria-checked', String(+s.dataset.star === n));
+      });
       stars.forEach(s => {
         s.addEventListener('click', () => { hidden.value = s.dataset.star; paint(+s.dataset.star); engine.clearError(field.id); engine.onFieldChange(); });
         s.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); s.click(); } });
@@ -232,21 +238,38 @@ const FieldRenderer = (() => {
       const fileInput = el.querySelector(`#f_${field.id}`);
       const list = el.querySelector(`[data-file-list="${field.id}"]`);
 
+      const renderFileList = files => {
+        list.innerHTML = files.map(fobj => `
+          <span class="file-chip"><span>📎</span>${Utils.escapeHTML(fobj.name)} <span class="text-[var(--ink-soft)]">(${Utils.formatBytes(fobj.size)})</span></span>`).join('');
+      };
+      const matchesAccept = file => {
+        const rules = String(field.accept || '').split(',').map(rule => rule.trim().toLowerCase()).filter(Boolean);
+        if (!rules.length || rules.includes('*')) return true;
+        const name = file.name.toLowerCase();
+        const mime = String(file.type || '').toLowerCase();
+        return rules.some(rule => rule.startsWith('.')
+          ? name.endsWith(rule)
+          : rule.endsWith('/*') ? mime.startsWith(rule.slice(0, -1)) : mime === rule);
+      };
+      renderFileList(engine.files[field.id] || []);
+
       const handleFiles = (fl) => {
         const files = Array.from(fl);
         const maxBytes = (field.maxSizeMB || 10) * 1024 * 1024;
         const accepted = files.filter(fobj => {
           if (fobj.size > maxBytes) { Utils.toast(`"${fobj.name}" exceeds ${field.maxSizeMB || 10}MB limit`, 'error'); return false; }
+          if (!matchesAccept(fobj)) { Utils.toast(`"${fobj.name}" is not an accepted file type.`, 'error'); return false; }
           return true;
         });
-        engine.setFiles(field.id, field.multiple ? accepted : accepted.slice(0, 1));
-        list.innerHTML = accepted.map(fobj => `
-          <span class="file-chip"><span>📎</span>${Utils.escapeHTML(fobj.name)} <span class="text-[var(--ink-soft)]">(${Utils.formatBytes(fobj.size)})</span></span>`).join('');
+        const selected = field.multiple ? accepted : accepted.slice(0, 1);
+        engine.setFiles(field.id, selected);
+        renderFileList(selected);
         engine.clearError(field.id);
         engine.onFieldChange();
       };
 
-      zone.addEventListener('click', () => fileInput.click());
+      zone.addEventListener('click', e => { if (e.target !== fileInput) fileInput.click(); });
+      fileInput.addEventListener('click', e => e.stopPropagation());
       zone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
       fileInput.addEventListener('change', () => handleFiles(fileInput.files));
       ['dragover', 'dragenter'].forEach(evt => zone.addEventListener(evt, e => { e.preventDefault(); zone.classList.add('drag'); }));
@@ -271,6 +294,16 @@ const FieldRenderer = (() => {
       };
       resize();
       let drawing = false, hasDrawn = false;
+      const savedSignature = engine.signatures[field.id];
+      if (savedSignature) {
+        const image = new Image();
+        image.onload = () => {
+          const rect = canvas.getBoundingClientRect();
+          ctx.drawImage(image, 0, 0, rect.width, rect.height);
+        };
+        image.src = savedSignature;
+        hasDrawn = true;
+      }
       const pos = e => {
         const rect = canvas.getBoundingClientRect();
         const t = e.touches ? e.touches[0] : e;
@@ -291,6 +324,8 @@ const FieldRenderer = (() => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         hasDrawn = false;
         engine.setSignature(field.id, null);
+        engine.clearError(field.id);
+        engine.onFieldChange();
       });
     }
 

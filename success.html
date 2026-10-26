@@ -4,12 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Submission confirmed · FormCraft</title>
-<meta name="theme-color" content="#0F766E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#F5F5F7">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/apple.css">
 </head>
 <body class="antialiased flex items-center justify-center min-h-screen">
 <div class="bg-ambient" aria-hidden="true"></div>
@@ -39,8 +37,11 @@
 <script>
   const params = new URLSearchParams(location.search);
   const id = params.get('id') || params.get('submissionId');
+  const submittedAt = Number(params.get('ts'));
   document.getElementById('ref-id').textContent = id || 'N/A — opened directly';
-  document.getElementById('ref-time').textContent = new Date().toLocaleString();
+  document.getElementById('ref-time').textContent = Number.isFinite(submittedAt) && submittedAt > 0
+    ? new Date(submittedAt).toLocaleString()
+    : 'Not available';
 </script>
 </body>
 </html>

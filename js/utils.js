@@ -5,6 +5,23 @@
 
 const Utils = (() => {
 
+  function getStorage() {
+    try { return typeof window !== 'undefined' ? window.localStorage : null; }
+    catch { return null; }
+  }
+
+  function storageGet(key) {
+    try { return getStorage()?.getItem(key) ?? null; } catch { return null; }
+  }
+
+  function storageSet(key, value) {
+    try { getStorage()?.setItem(key, value); return true; } catch { return false; }
+  }
+
+  function storageRemove(key) {
+    try { getStorage()?.removeItem(key); } catch { /* Storage can be disabled by the browser. */ }
+  }
+
   /** Escape HTML to prevent XSS when injecting user text into the DOM */
   function escapeHTML(str) {
     if (str === null || str === undefined) return '';
@@ -33,7 +50,7 @@ const Utils = (() => {
     };
   }
 
-  function getVisibleFieldIds(storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  function getVisibleFieldIds(storage = getStorage()) {
     try {
       const raw = storage?.getItem('formcraft:visibleFields');
       if (!raw) return null;
@@ -44,23 +61,14 @@ const Utils = (() => {
     }
   }
 
-  function setVisibleFieldIds(fieldIds, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  function setVisibleFieldIds(fieldIds, storage = getStorage()) {
     try {
-      storage?.setItem('formcraft:visibleFields', JSON.stringify(fieldIds || []));
+      if (fieldIds === null || fieldIds === undefined) storage?.removeItem('formcraft:visibleFields');
+      else storage?.setItem('formcraft:visibleFields', JSON.stringify(fieldIds));
     } catch {}
   }
 
-  function buildVisibleSchema(schema, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
-    const visibleIds = getVisibleFieldIds(storage);
-    const visibleSet = new Set(visibleIds || []);
-    const steps = (schema.steps || []).map(step => ({
-      ...step,
-      fields: (step.fields || []).filter(field => visibleSet.size === 0 || visibleSet.has(field.id)),
-    })).filter(step => (step.fields || []).length > 0);
-    return { ...schema, steps };
-  }
-
-  function getFeatureFlags(storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  function getFeatureFlags(storage = getStorage()) {
     const defaults = { drafts: true, reset: true, progress: true, submitLabel: true, intro: true };
     try {
       const raw = storage?.getItem('formcraft:featureFlags');
@@ -72,26 +80,46 @@ const Utils = (() => {
     }
   }
 
-  function setFeatureFlags(flags, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  function setFeatureFlags(flags, storage = getStorage()) {
     try {
       storage?.setItem('formcraft:featureFlags', JSON.stringify(flags || {}));
     } catch {}
   }
 
-  function getCustomFields(storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  function getCustomFields(storage = getStorage()) {
     try {
       const raw = storage?.getItem('formcraft:customFields');
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? normalizeCustomFields(parsed) : [];
     } catch {
       return [];
     }
   }
 
-  function setCustomFields(fields, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  function normalizeCustomFields(fields) {
+    const allowedTypes = new Set(['text', 'email', 'phone', 'textarea', 'number', 'dropdown']);
+    return fields.filter(field => field && typeof field === 'object'
+      && /^[a-z][a-z0-9_]{0,63}$/.test(String(field.id || ''))
+      && allowedTypes.has(field.type)
+      && String(field.label || '').trim()
+      && (field.type !== 'dropdown' || (Array.isArray(field.options) && field.options.length > 0)))
+      .map(field => ({
+        ...field,
+        id: String(field.id),
+        label: String(field.label).trim().slice(0, 100),
+        stepTitle: String(field.stepTitle || 'About you').slice(0, 100),
+        options: field.type === 'dropdown'
+          ? field.options.map(option => String(option).trim().slice(0, 100)).filter(Boolean).slice(0, 30)
+          : undefined,
+        required: !!field.required,
+      }))
+      .filter(field => field.type !== 'dropdown' || field.options.length > 0);
+  }
+
+  function setCustomFields(fields, storage = getStorage()) {
     try {
-      storage?.setItem('formcraft:customFields', JSON.stringify(fields || []));
+      storage?.setItem('formcraft:customFields', JSON.stringify(normalizeCustomFields(Array.isArray(fields) ? fields : [])));
     } catch {}
   }
 
@@ -104,7 +132,7 @@ const Utils = (() => {
       .replace(/(^-|-$)/g, '');
   }
 
-  function getTopics(storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  function getTopics(storage = getStorage()) {
     try {
       const raw = storage?.getItem('formcraft:topics');
       if (!raw) return [];
@@ -115,18 +143,18 @@ const Utils = (() => {
     }
   }
 
-  function getTopicBySlug(slug, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  function getTopicBySlug(slug, storage = getStorage()) {
     if (!slug) return null;
     return getTopics(storage).find(item => item.slug === slug) || null;
   }
 
-  function setTopics(topics, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  function setTopics(topics, storage = getStorage()) {
     try {
       storage?.setItem('formcraft:topics', JSON.stringify(topics || []));
     } catch {}
   }
 
-  function getActiveTopicSlug(storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  function getActiveTopicSlug(storage = getStorage()) {
     try {
       return storage?.getItem('formcraft:activeTopicSlug') || '';
     } catch {
@@ -134,7 +162,7 @@ const Utils = (() => {
     }
   }
 
-  function setActiveTopicSlug(slug, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  function setActiveTopicSlug(slug, storage = getStorage()) {
     try {
       storage?.setItem('formcraft:activeTopicSlug', slug || '');
     } catch {}
@@ -199,13 +227,59 @@ const Utils = (() => {
     return next;
   }
 
-  function buildVisibleSchema(schema, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  function getSharedConfig(storage = getStorage()) {
+    return {
+      visibleFieldIds: getVisibleFieldIds(storage),
+      customFields: getCustomFields(storage),
+      featureFlags: getFeatureFlags(storage),
+      activeTopicSlug: getActiveTopicSlug(storage),
+    };
+  }
+
+  function applySharedConfig(config, storage = getStorage()) {
+    if (!config || typeof config !== 'object') return;
+    setVisibleFieldIds(Array.isArray(config.visibleFieldIds) ? config.visibleFieldIds : null, storage);
+    setCustomFields(Array.isArray(config.customFields) ? config.customFields : [], storage);
+    setFeatureFlags(config.featureFlags && typeof config.featureFlags === 'object' ? config.featureFlags : {}, storage);
+    setActiveTopicSlug(config.activeTopicSlug || '', storage);
+  }
+
+  async function fetchConfigFromServer() {
+    const ep = _endpoint();
+    if (!ep) return null;
+    try {
+      const res = await fetch(`${ep}?action=getConfig`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.status !== 'ok' || !data.config) return null;
+      if (data.config.configured !== false) applySharedConfig(data.config);
+      return data.config;
+    } catch { return null; }
+  }
+
+  async function saveConfigToServer(config, adminToken) {
+    const ep = _endpoint();
+    if (!ep) throw new Error('No endpoint configured.');
+    const res = await fetch(ep, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'setConfig', token: adminToken, config }),
+    });
+    if (!res.ok) throw new Error(`Server request failed (${res.status}).`);
+    const data = await res.json();
+    if (data.status !== 'ok' || !data.config) throw new Error(data.message || 'Server error saving settings.');
+    applySharedConfig(data.config);
+    return data.config;
+  }
+
+  function buildVisibleSchema(schema, storage = getStorage()) {
     const visibleIds = getVisibleFieldIds(storage);
     const visibleSet = new Set(visibleIds || []);
+    const isVisible = field => visibleIds === null || visibleIds === undefined || visibleSet.has(field.id);
     const customFields = getCustomFields(storage);
     const steps = (schema.steps || []).map(step => {
-      const baseFields = (step.fields || []).filter(field => visibleSet.size === 0 || visibleSet.has(field.id));
-      const customStepFields = customFields.filter(field => field.stepTitle === step.title && (visibleSet.size === 0 || visibleSet.has(field.id)));
+      const baseFields = (step.fields || []).filter(isVisible);
+      const customStepFields = customFields.filter(field => field.stepTitle === step.title && isVisible(field));
       return {
         ...step,
         fields: [...baseFields, ...customStepFields],
@@ -214,7 +288,7 @@ const Utils = (() => {
     return { ...schema, steps };
   }
 
-  function isFeatureEnabled(name, storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  function isFeatureEnabled(name, storage = getStorage()) {
     return !!getFeatureFlags(storage)[name];
   }
 
@@ -309,6 +383,9 @@ const Utils = (() => {
     escapeHTML,
     sanitizeInput,
     debounce,
+    storageGet,
+    storageSet,
+    storageRemove,
     getVisibleFieldIds,
     setVisibleFieldIds,
     buildVisibleSchema,
@@ -324,6 +401,10 @@ const Utils = (() => {
     fetchTopicsFromServer,
     saveTopicsToServer,
     deleteTopicFromServer,
+    getSharedConfig,
+    applySharedConfig,
+    fetchConfigFromServer,
+    saveConfigToServer,
     getFeatureFlags,
     setFeatureFlags,
     isFeatureEnabled,

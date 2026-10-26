@@ -5,10 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin Dashboard · FormCraft</title>
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#0F766E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#F5F5F7">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="css/style.css">
 <style>
@@ -137,6 +134,7 @@
     transform: rotate(-90deg);
   }
 </style>
+<link rel="stylesheet" href="css/apple.css">
 </head>
 <body class="antialiased">
 <div class="bg-ambient" aria-hidden="true"></div>
@@ -147,7 +145,7 @@
 ════════════════════════════════════════════ -->
 <div id="login-gate" class="min-h-screen flex items-center justify-center px-4">
   <div class="glass card p-8 max-w-sm w-full">
-    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-2)] flex items-center justify-center text-white font-display font-semibold shadow-md mb-4">F</div>
+    <div class="brand-mark w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-2)] flex items-center justify-center text-white font-display font-semibold shadow-md mb-4">F</div>
     <h1 class="font-display text-2xl mb-1">Admin access</h1>
     <p class="field-hint mb-5">Enter your admin token to view submissions.</p>
     <input id="token-input" type="password" class="field-input mb-3" placeholder="Admin token" autocomplete="off">
@@ -162,7 +160,7 @@
 <div id="dashboard" class="hidden">
   <header id="topbar" class="max-w-7xl mx-auto px-4 sm:px-6 pt-8 flex items-center justify-between flex-wrap gap-3">
     <div class="flex items-center gap-2.5">
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-2)] flex items-center justify-center text-white font-display font-semibold shadow-md">F</div>
+      <div class="brand-mark w-9 h-9 rounded-xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-2)] flex items-center justify-center text-white font-display font-semibold shadow-md">F</div>
       <span class="font-display text-lg font-medium tracking-tight">FormCraft Admin</span>
     </div>
     <div class="flex items-center gap-2">
@@ -362,6 +360,7 @@
             <option value="number">Number</option>
             <option value="dropdown">Dropdown</option>
           </select>
+          <input id="new-field-options" class="field-input hidden" placeholder="Options, separated by commas" aria-label="Dropdown options">
           <select id="new-field-step" class="field-input">
             <option value="About you">About you</option>
             <option value="Project preferences">Project preferences</option>

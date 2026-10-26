@@ -5,15 +5,19 @@
 const ThemeController = (() => {
   const STORAGE_KEY = 'formcraft:theme';
 
+  function readSavedTheme() {
+    try { return localStorage.getItem(STORAGE_KEY); } catch { return ''; }
+  }
+
   function apply(theme) {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     const btns = document.querySelectorAll('[data-theme-toggle]');
     btns.forEach(b => b.setAttribute('aria-pressed', theme === 'dark'));
-    localStorage.setItem(STORAGE_KEY, theme);
+    try { localStorage.setItem(STORAGE_KEY, theme); } catch { /* Theme still applies for this page. */ }
   }
 
   function current() {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = readSavedTheme();
     if (saved) return saved;
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }

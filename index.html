@@ -5,12 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FormCraft — Topic-Based Intake Forms</title>
 <meta name="description" content="Browse topics and fill out the relevant intake form. Each topic has its own shareable link.">
-<meta name="theme-color" content="#0F766E">
-
-<!-- Preconnect + fonts -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#F5F5F7">
 
 <!-- Tailwind (CDN, JIT) -->
 <script src="https://cdn.tailwindcss.com"></script>
@@ -124,6 +119,7 @@
   .copy-btn:hover { opacity: .9; transform: scale(1.03); }
   .copy-btn:active { transform: scale(.97); }
 </style>
+<link rel="stylesheet" href="css/apple.css">
 </head>
 <body class="antialiased">
 <div class="bg-ambient" aria-hidden="true"></div>
@@ -134,7 +130,7 @@
 
 <header class="max-w-3xl mx-auto px-4 sm:px-6 pt-8 flex items-center justify-between">
   <a href="index.html" class="flex items-center gap-2.5" style="text-decoration:none;color:inherit">
-    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-2)] flex items-center justify-center text-white font-display font-semibold shadow-md">F</div>
+    <div class="brand-mark w-9 h-9 rounded-xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-2)] flex items-center justify-center text-white font-display font-semibold shadow-md">F</div>
     <span class="font-display text-lg font-medium tracking-tight">FormCraft</span>
   </a>
   <div class="flex items-center gap-2">
@@ -279,13 +275,17 @@
     return `${window.location.origin}${window.location.pathname}?topic=${encodeURIComponent(slug)}`;
   }
 
-  function copyToClipboard(text, btn) {
-    navigator.clipboard.writeText(text).then(() => {
+  async function copyToClipboard(text, btn) {
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+      else throw new Error('Clipboard API unavailable');
       const orig = btn.innerHTML;
       btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg> Copied!`;
-      btn.style.background = 'linear-gradient(135deg,var(--success),#16a34a)';
+      btn.style.background = 'var(--success)';
       setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; }, 2000);
-    });
+    } catch {
+      Utils.toast('Copy failed — please copy the link manually.', 'error');
+    }
   }
 
   function renderTopicCards() {
@@ -368,7 +368,6 @@
       renderActiveBanner(null);
       return;
     }
-    Utils.setActiveTopicSlug(topic.slug);
     Utils.setVisibleFieldIds(topic.fieldIds || []);
     renderActiveBanner(topic);
 
@@ -392,14 +391,12 @@
   applyTopicFromUrl();
   renderTopicCards();
 
-  // 2) Fetch fresh topics from server, then re-render
-  Utils.fetchTopicsFromServer().then(serverTopics => {
-    if (serverTopics !== null) {
-      // Re-apply topic from URL now that server data is loaded
-      applyTopicFromUrl();
-      renderTopicCards();
-      window.formEngine?.refreshSchema();
-    }
+  // 2) Load shared settings and topics, then re-render from the latest config.
+  Promise.all([Utils.fetchTopicsFromServer(), Utils.fetchConfigFromServer()]).then(() => {
+    // Re-apply topic from URL after shared settings and topic data are loaded.
+    applyTopicFromUrl();
+    renderTopicCards();
+    window.formEngine?.refreshSchema();
   });
 </script>
 </body>

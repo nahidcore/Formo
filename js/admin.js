@@ -7,6 +7,7 @@ const AdminApp = (() => {
   let submissions = [];
   let filtered = [];
   let editingTopicSlug = null;
+  let activeSessionToken = '';
 
   const els = {};
 
@@ -46,6 +47,7 @@ const AdminApp = (() => {
     els.newFieldLabel = document.getElementById('new-field-label');
     els.newFieldId = document.getElementById('new-field-id');
     els.newFieldType = document.getElementById('new-field-type');
+    els.newFieldOptions = document.getElementById('new-field-options');
     els.newFieldStep = document.getElementById('new-field-step');
     els.search = document.getElementById('search-input');
     els.tableBody = document.getElementById('table-body');
@@ -61,7 +63,20 @@ const AdminApp = (() => {
     els.btnCloseModal = document.getElementById('btn-close-modal');
   }
 
-  function token() { return sessionStorage.getItem(TOKEN_KEY) || ''; }
+  function token() {
+    try { return sessionStorage.getItem(TOKEN_KEY) || activeSessionToken; }
+    catch { return activeSessionToken; }
+  }
+
+  async function persistSharedConfig() {
+    try {
+      await Utils.saveConfigToServer(Utils.getSharedConfig(), token());
+      return true;
+    } catch (error) {
+      Utils.toast('Settings are saved in this browser but could not be shared: ' + (error.message || error), 'error');
+      return false;
+    }
+  }
 
   async function apiGet(action, extraParams = {}) {
     const params = new URLSearchParams({ action, token: token(), ...extraParams });
@@ -96,19 +111,26 @@ const AdminApp = (() => {
   async function login() {
     const t = token() || (els.tokenInput && els.tokenInput.value.trim());
     if (!t) { Utils.toast('Enter your admin token.', 'error'); return; }
-    sessionStorage.setItem(TOKEN_KEY, t);
+    activeSessionToken = t;
+    try { sessionStorage.setItem(TOKEN_KEY, t); } catch { /* Current tab can still authenticate. */ }
     els.btnLogin.disabled = true;
     els.btnLogin.innerHTML = `<span class="spinner"></span> Verifying…`;
     try {
       const result = await apiGet('list');
       if (result.status === 'error') throw new Error(result.message || 'Invalid token.');
       submissions = result.submissions || [];
+      const sharedConfig = await Utils.fetchConfigFromServer();
+      if (sharedConfig && sharedConfig.configured === false) {
+        try { await Utils.saveConfigToServer(Utils.getSharedConfig(), t); }
+        catch (error) { Utils.toast('Your settings could not be shared: ' + (error.message || error), 'error'); }
+      }
       els.loginGate.classList.add('hidden');
       els.dashboard.classList.remove('hidden');
       renderAll();
     } catch (e) {
       Utils.toast(e.message || 'Login failed. Check your token.', 'error');
-      sessionStorage.removeItem(TOKEN_KEY);
+      activeSessionToken = '';
+      try { sessionStorage.removeItem(TOKEN_KEY); } catch { /* Ignore unavailable session storage. */ }
     } finally {
       els.btnLogin.disabled = false;
       els.btnLogin.innerHTML = 'Unlock dashboard';
@@ -167,9 +189,9 @@ const AdminApp = (() => {
         <td><span class="badge ${(s.status === 'Reviewed') ? 'badge-reviewed' : 'badge-new'}">${Utils.escapeHTML(s.status || 'New')}</span></td>
         <td class="no-print">
           <div class="flex gap-1">
-            <button class="btn btn-ghost !p-1.5 !text-xs" data-view="${s.submissionId}" title="View">👁</button>
-            <button class="btn btn-ghost !p-1.5 !text-xs" data-review="${s.submissionId}" title="Mark reviewed">✓</button>
-            <button class="btn btn-ghost !p-1.5 !text-xs" data-delete="${s.submissionId}" title="Delete">🗑</button>
+            <button class="btn btn-ghost !p-1.5 !text-xs" data-view="${Utils.escapeHTML(s.submissionId || '')}" title="View">👁</button>
+            <button class="btn btn-ghost !p-1.5 !text-xs" data-review="${Utils.escapeHTML(s.submissionId || '')}" title="Mark reviewed">✓</button>
+            <button class="btn btn-ghost !p-1.5 !text-xs" data-delete="${Utils.escapeHTML(s.submissionId || '')}" title="Delete">🗑</button>
           </div>
         </td>
       </tr>`).join('');
@@ -215,7 +237,7 @@ const AdminApp = (() => {
       <div class="grid grid-cols-2 gap-3 mb-6 bg-[var(--surface)] border border-[var(--surface-border)] rounded-[var(--radius-sm)] p-3 text-sm">
         <div>
           <p class="field-hint text-[0.65rem] uppercase tracking-wider font-semibold mb-1">Submission ID</p>
-          <p class="font-mono text-xs text-[var(--foreground)]">${s.submissionId || '—'}</p>
+          <p class="font-mono text-xs text-[var(--foreground)]">${Utils.escapeHTML(s.submissionId || '—')}</p>
         </div>
         <div>
           <p class="field-hint text-[0.65rem] uppercase tracking-wider font-semibold mb-1">Inferred Topic</p>
@@ -264,13 +286,14 @@ const AdminApp = (() => {
     const extraFields = subKeys.filter(k => !configuredIds.has(k)).map(k => ({ id: k, label: k }));
     if (extraFields.length) { html += renderFieldGroup('Other Data', extraFields); }
 
-    if (s.files && s.files.length) {
+    if (Array.isArray(s.files) && s.files.length) {
+      const validFiles = s.files.filter(file => safeExternalUrl(file?.url));
       html += `
         <div class="mt-6">
           <h4 class="font-semibold text-xs tracking-wide uppercase border-b-2 border-[var(--primary)]/30 inline-block pb-1 mb-3">Attachments</h4>
           <div class="flex flex-col gap-2">
-            ${s.files.map(f => `
-              <a href="${f.url}" target="_blank" rel="noopener" class="flex items-center gap-3 bg-[var(--surface)] border border-[var(--surface-border)] p-3 rounded-lg hover:border-[var(--primary)] transition-colors group">
+            ${validFiles.map(f => `
+              <a href="${Utils.escapeHTML(safeExternalUrl(f.url))}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3 bg-[var(--surface)] border border-[var(--surface-border)] p-3 rounded-lg hover:border-[var(--primary)] transition-colors group">
                 <div class="w-8 h-8 rounded bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center group-hover:scale-110 transition-transform">
                   <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
                 </div>
@@ -283,6 +306,13 @@ const AdminApp = (() => {
 
     els.modalBody.innerHTML = html;
     els.modal.classList.remove('hidden');
+  }
+
+  function safeExternalUrl(value) {
+    try {
+      const url = new URL(String(value || ''), window.location.href);
+      return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+    } catch { return ''; }
   }
 
   async function markReviewed(id) {
@@ -316,7 +346,8 @@ const AdminApp = (() => {
       const row = header.map(k => {
         const v = k in s ? s[k] : (s.values ? s.values[k] : '');
         const str = Array.isArray(v) ? v.join('; ') : (v ?? '');
-        return `"${String(str).replace(/"/g, '""')}"`;
+        const safe = /^[\t\r ]*[=+\-@]/.test(String(str)) ? `'${str}` : String(str);
+        return `"${safe.replace(/"/g, '""')}"`;
       });
       lines.push(row.join(','));
     });
@@ -329,7 +360,7 @@ const AdminApp = (() => {
     const a = document.createElement('a');
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function exportCSV() {
@@ -349,20 +380,14 @@ const AdminApp = (() => {
   }
 
   function getConfiguredFields() {
-    const visibleIds = Utils.getVisibleFieldIds();
-    const visibleSet = new Set(visibleIds || []);
     const fields = [];
     FORM_SCHEMA.steps.forEach(step => {
       step.fields.forEach(field => {
-        if (visibleSet.size === 0 || visibleSet.has(field.id)) {
-          fields.push({ ...field, stepTitle: step.title });
-        }
+        fields.push({ ...field, stepTitle: step.title });
       });
     });
     Utils.getCustomFields().forEach(field => {
-      if (visibleSet.size === 0 || visibleSet.has(field.id)) {
-        fields.push({ ...field, stepTitle: field.stepTitle || 'Custom' });
-      }
+      fields.push({ ...field, stepTitle: field.stepTitle || 'Custom' });
     });
     return fields;
   }
@@ -419,7 +444,7 @@ const AdminApp = (() => {
     });
     els.formFieldConfig.innerHTML = Object.entries(grouped).map(([stepTitle, fields]) => {
       const boxes = fields.map(field => {
-        const isChecked = checked.size === 0 || checked.has(field.id);
+        const isChecked = visibleIds === null || visibleIds === undefined || checked.has(field.id);
         return `<label class="flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-3 py-2 text-sm">
           <input type="checkbox" value="${Utils.escapeHTML(field.id)}" ${isChecked ? 'checked' : ''}>
           <span>${Utils.escapeHTML(field.label || field.id)}</span>
@@ -432,11 +457,14 @@ const AdminApp = (() => {
     }).join('');
   }
 
-  function applyFormFieldConfig() {
+  async function applyFormFieldConfig() {
     const selected = Array.from(els.formFieldConfig.querySelectorAll('input[type="checkbox"]:checked')).map(item => item.value);
     Utils.setVisibleFieldIds(selected);
+    Utils.setActiveTopicSlug('');
+    const shared = await persistSharedConfig();
     renderFormFieldConfig();
-    Utils.toast('Form field visibility updated.', 'success');
+    renderTopicDashboardSelector();
+    if (shared) Utils.toast('Form field visibility updated for visitors.', 'success');
   }
 
   function syncTopicEditorUI() {
@@ -449,7 +477,7 @@ const AdminApp = (() => {
     const fields = getAllConfiguredFields();
     const topics = Utils.getTopics();
     const topic = topics.find(item => item.slug === editingTopicSlug) || topics.find(item => item.slug === Utils.getActiveTopicSlug());
-    const selectedIds = topic?.fieldIds || Utils.getVisibleFieldIds() || [];
+    const selectedIds = topic ? (topic.fieldIds || []) : Utils.getVisibleFieldIds();
     const checked = new Set(selectedIds || []);
     const grouped = {};
     fields.forEach(field => {
@@ -460,7 +488,7 @@ const AdminApp = (() => {
 
     els.topicFieldList.innerHTML = Object.entries(grouped).map(([stepTitle, groupFields]) => {
       const boxes = groupFields.map(field => {
-        const isChecked = checked.size === 0 || checked.has(field.id);
+        const isChecked = selectedIds === null || selectedIds === undefined || checked.has(field.id);
         return `<label class="flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--surface-border)] px-3 py-2 text-sm">
           <input type="checkbox" value="${Utils.escapeHTML(field.id)}" ${isChecked ? 'checked' : ''}>
           <span>${Utils.escapeHTML(field.label || field.id)}</span>
@@ -501,13 +529,15 @@ const AdminApp = (() => {
     return `${base}?topic=${encodeURIComponent(slug)}`;
   }
 
-  function copyToClipboard(text, btn) {
-    navigator.clipboard.writeText(text).then(() => {
+  async function copyToClipboard(text, btn) {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(text);
       const orig = btn.innerHTML;
       btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg> Copied!`;
-      btn.style.background = 'linear-gradient(135deg,var(--success),#16a34a)';
+      btn.style.background = 'var(--success)';
       setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; }, 2000);
-    }).catch(() => Utils.toast('Copy failed — please copy manually.', 'error'));
+    } catch { Utils.toast('Copy failed — please copy manually.', 'error'); }
   }
 
   function renderTopicDashboardSelector() {
@@ -570,9 +600,12 @@ const AdminApp = (() => {
 
     // Submission stats for this topic (topics share field IDs as the filter signal)
     const fieldSet = new Set(fieldIds);
-    const topicSubs = fieldSet.size === 0 ? submissions : submissions.filter(s => {
-      const keys = Object.keys(s.values || {});
-      return keys.some(k => fieldSet.has(k));
+    const topicSubs = submissions.filter(s => {
+      const values = s.values || {};
+      return Array.from(fieldSet).some(id => {
+        const value = values[id] ?? s[id];
+        return Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && String(value).trim() !== '';
+      });
     });
     const pending = topicSubs.filter(s => (s.status || 'New') !== 'Reviewed').length;
     if (els.topicDashStatSubs) els.topicDashStatSubs.textContent = topicSubs.length;
@@ -659,6 +692,7 @@ const AdminApp = (() => {
 
     Utils.setActiveTopicSlug(slug);
     Utils.setVisibleFieldIds(selected);
+    await persistSharedConfig();
     editingTopicSlug = null;
     if (els.topicName) els.topicName.value = '';
     if (els.topicSlug) els.topicSlug.value = '';
@@ -670,18 +704,19 @@ const AdminApp = (() => {
     syncTopicEditorUI();
   }
 
-  function applyTopic(slug) {
+  async function applyTopic(slug) {
     const topic = Utils.getTopics().find(item => item.slug === slug);
     if (!topic) return;
     Utils.setActiveTopicSlug(topic.slug);
     Utils.setVisibleFieldIds(topic.fieldIds || []);
+    const configShared = await persistSharedConfig();
     renderTopicFieldList();
     renderFormFieldConfig();
     renderInsights();
     // Refresh dashboard selector to reflect new active topic
     if (els.topicDashSelect) els.topicDashSelect.value = slug;
     renderTopicDashboard(slug);
-    Utils.toast(`Applied topic "${topic.name}".`, 'success');
+    if (configShared) Utils.toast(`Applied topic "${topic.name}".`, 'success');
   }
 
   async function deleteTopic(slug) {
@@ -693,7 +728,8 @@ const AdminApp = (() => {
       if (editingTopicSlug === slug) editingTopicSlug = null;
       if (Utils.getActiveTopicSlug() === slug) {
         Utils.setActiveTopicSlug('');
-        Utils.setVisibleFieldIds([]);
+        Utils.setVisibleFieldIds(null);
+        await persistSharedConfig();
       }
       Utils.toast('Topic deleted.', 'success');
     } catch (e) {
@@ -727,7 +763,7 @@ const AdminApp = (() => {
     `).join('');
   }
 
-  function applyFeatureConfig() {
+  async function applyFeatureConfig() {
     const flags = {
       drafts: els.featureConfig?.querySelector('[data-feature="drafts"]')?.checked || false,
       reset: els.featureConfig?.querySelector('[data-feature="reset"]')?.checked || false,
@@ -736,32 +772,58 @@ const AdminApp = (() => {
       intro: els.featureConfig?.querySelector('[data-feature="intro"]')?.checked || false,
     };
     Utils.setFeatureFlags(flags);
+    const shared = await persistSharedConfig();
     renderFeatureConfig();
-    Utils.toast('Feature options updated.', 'success');
+    if (shared) Utils.toast('Feature options updated for visitors.', 'success');
   }
 
-  function addCustomField() {
+  async function addCustomField() {
     const label = (els.newFieldLabel?.value || '').trim();
-    const id = (els.newFieldId?.value || '').trim().toLowerCase().replace(/\s+/g, '_');
+    const id = (els.newFieldId?.value || '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
     const type = els.newFieldType?.value || 'text';
     const stepTitle = els.newFieldStep?.value || 'About you';
     if (!label || !id) {
       Utils.toast('Please provide a field label and id.', 'error');
       return;
     }
+    if (!/^[a-z][a-z0-9_]{0,63}$/.test(id)) {
+      Utils.toast('Field ID must start with a letter and contain only letters, numbers, and underscores.', 'error');
+      return;
+    }
+    if (getAllConfiguredFields().some(field => field.id === id)) {
+      Utils.toast('That field ID is already in use.', 'error');
+      return;
+    }
+    const options = type === 'dropdown'
+      ? (els.newFieldOptions?.value || '').split(',').map(value => value.trim()).filter(Boolean)
+      : [];
+    if (type === 'dropdown' && !options.length) {
+      Utils.toast('Add at least one dropdown option, separated by commas.', 'error');
+      return;
+    }
     const existing = Utils.getCustomFields();
-    const next = [...existing, { id, type, label, stepTitle, required: false }];
+    const next = [...existing, { id, type, label, stepTitle, required: false, ...(type === 'dropdown' ? { options } : {}) }];
     Utils.setCustomFields(next);
+    const activeTopicSlug = Utils.getActiveTopicSlug();
+    const currentVisible = Utils.getVisibleFieldIds();
+    if (!activeTopicSlug && Array.isArray(currentVisible)) {
+      Utils.setVisibleFieldIds([...new Set([...currentVisible, id])]);
+    }
+    const shared = await persistSharedConfig();
     els.newFieldLabel.value = '';
     els.newFieldId.value = '';
-    Utils.toast('Field added. Refresh the form to see it.', 'success');
+    if (els.newFieldOptions) els.newFieldOptions.value = '';
+    renderTopicFieldList();
+    renderFormFieldConfig();
+    renderInsights();
+    Utils.toast(shared ? 'Field added. Refresh the form to see it.' : 'Field added in this browser, but it could not be shared.', shared ? 'success' : 'error');
   }
 
   function renderInsights() {
     if (!els.insightPanel) return;
     const totalFields = FORM_SCHEMA.steps.reduce((sum, step) => sum + step.fields.length, 0) + Utils.getCustomFields().length;
     const visibleIds = Utils.getVisibleFieldIds();
-    const visibleCount = visibleIds && visibleIds.length ? visibleIds.length : totalFields;
+    const visibleCount = visibleIds === null || visibleIds === undefined ? totalFields : visibleIds.length;
     const customCount = Utils.getCustomFields().length;
     const flags = Utils.getFeatureFlags();
     const topics = Utils.getTopics();
@@ -794,6 +856,12 @@ const AdminApp = (() => {
     els.btnExportXls.addEventListener('click', exportExcel);
     els.btnPrint.addEventListener('click', () => window.print());
     els.btnCloseModal.addEventListener('click', () => els.modal.classList.add('hidden'));
+
+    const syncCustomFieldOptions = () => {
+      els.newFieldOptions?.classList.toggle('hidden', els.newFieldType?.value !== 'dropdown');
+    };
+    els.newFieldType?.addEventListener('change', syncCustomFieldOptions);
+    syncCustomFieldOptions();
 
     els.tableBody.addEventListener('click', e => {
       const view = e.target.closest('[data-view]');
@@ -828,7 +896,15 @@ const AdminApp = (() => {
   }
 
   async function loadTopicsFromServer() {
-    const serverTopics = await Utils.fetchTopicsFromServer();
+    const [serverTopics, serverConfig] = await Promise.all([
+      Utils.fetchTopicsFromServer(),
+      Utils.fetchConfigFromServer(),
+    ]);
+    if (serverConfig) {
+      renderFormFieldConfig();
+      renderFeatureConfig();
+      renderInsights();
+    }
     if (serverTopics !== null) {
       const activeTopic = serverTopics.find(t => t.slug === Utils.getActiveTopicSlug());
       if (activeTopic) Utils.setVisibleFieldIds(activeTopic.fieldIds || []);

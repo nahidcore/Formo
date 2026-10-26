@@ -16,6 +16,7 @@ class FormEngine {
     this.draftKey = `formcraft:draft:${schema.formId}`;
     this.rateKey = `formcraft:lastSubmit:${schema.formId}`;
     this.submitting = false;
+    this.saveDraftDebounced = Utils.debounce(() => this._persistDraft(), 300);
 
     this.featureFlags = Utils.getFeatureFlags();
 
@@ -71,8 +72,8 @@ class FormEngine {
       if (i < this.current) ring.classList.add('stamp-pop'); else ring.classList.remove('stamp-pop');
     });
     const total = this.steps.length;
-    const pct = Math.round(((this.current) / (total - 1)) * 100) || (this.current === 0 ? 0 : 100);
-    this.els.progressFill.style.width = `${Math.min(100, ((this.current) / (total - 1)) * 100)}%`;
+    const pct = total <= 1 ? 100 : (this.current / (total - 1)) * 100;
+    this.els.progressFill.style.width = `${Math.min(100, pct)}%`;
     this.els.progressLabel.textContent = `Step ${this.current + 1} of ${total} — ${this.steps[this.current].title}`;
   }
 
@@ -129,23 +130,34 @@ class FormEngine {
     const val = this.values[field.id];
     if (val === undefined) return;
     const input = this.els.stepBody.querySelector(`#f_${field.id}`);
-    if (!input) return;
     if (field.type === 'checkbox') {
       this.els.stepBody.querySelectorAll(`input[name="${field.id}"]`).forEach(cb => { cb.checked = (val || []).includes(cb.value); });
     } else if (field.type === 'radio') {
       this.els.stepBody.querySelectorAll(`input[name="${field.id}"]`).forEach(rb => { rb.checked = rb.value === val; });
+    } else if (['password', 'signature', 'image', 'pdf', 'files'].includes(field.type)) {
+      // Passwords, signatures, and browser file selections are not restorable from local storage.
+      return;
     } else if (field.type === 'multiselect') {
+      if (!input) return;
       input.value = JSON.stringify(val);
       this.els.stepBody.querySelectorAll(`[data-multiselect="${field.id}"] .chip`).forEach(chip => {
         if ((val || []).includes(chip.dataset.chipValue)) chip.classList.add('bg-[var(--primary)]', 'text-white');
       });
     } else if (field.type === 'rating') {
+      if (!input) return;
       input.value = val;
       this.els.stepBody.querySelectorAll(`[data-rating="${field.id}"] .star`).forEach(s => s.classList.toggle('filled', +s.dataset.star <= val));
     } else if (field.type === 'toggle') {
       const box = this.els.stepBody.querySelector(`[data-toggle="${field.id}"]`);
-      if (val === true || val === 'true') box.click();
+      if (box && (val === true || val === 'true')) {
+        box.classList.add('on');
+        box.setAttribute('aria-checked', 'true');
+        if (input) input.value = 'true';
+        const label = this.els.stepBody.querySelector(`[data-toggle-label="${field.id}"]`);
+        if (label) label.textContent = 'On';
+      }
     } else {
+      if (!input) return;
       input.value = val;
     }
   }
@@ -160,7 +172,25 @@ class FormEngine {
       if (!group) return;
       const show = this._evalCondition(f.conditional);
       group.style.display = show ? '' : 'none';
-      if (!show) this.clearError(f.id);
+      if (!show) {
+        this.clearError(f.id);
+        delete this.values[f.id];
+        delete this.files[f.id];
+        delete this.signatures[f.id];
+        group.querySelectorAll('input, textarea, select').forEach(input => {
+          if (input.type === 'checkbox' || input.type === 'radio') input.checked = false;
+          else if (input.type !== 'file') input.value = '';
+          else input.value = '';
+        });
+        group.querySelectorAll('.chip').forEach(chip => chip.classList.remove('bg-[var(--primary)]', 'text-white'));
+        group.querySelectorAll('.toggle').forEach(toggle => {
+          toggle.classList.remove('on');
+          toggle.setAttribute('aria-checked', 'false');
+        });
+        group.querySelectorAll('[data-toggle-label]').forEach(label => { label.textContent = 'Off'; });
+        group.querySelectorAll('[data-file-list]').forEach(list => { list.innerHTML = ''; });
+        group.querySelectorAll('canvas').forEach(canvas => canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height));
+      }
     });
   }
 
@@ -203,6 +233,7 @@ class FormEngine {
 
   onFieldChange() {
     const step = this.steps[this.current];
+    if (!step) return;
     step.fields.forEach(f => { this.values[f.id] = this.getFieldValue(f); });
     this.applyConditionals();
     this._saveDraft();
@@ -232,18 +263,29 @@ class FormEngine {
     else if (field.type === 'signature' && field.required && !this.signatures[field.id]) error = 'Please provide a signature.';
 
     if (errSlot) errSlot.innerHTML = (showError && error) ? `<span>⚠ ${Utils.escapeHTML(error)}</span>` : '';
+    group?.classList.toggle('has-error', showError && !!error);
     if (input) { input.classList.toggle('invalid', showError && !!error); input.classList.toggle('valid', showError && !error && !!v); }
+    const choiceGroup = group?.querySelector('[role="radiogroup"], [role="group"]');
+    if (choiceGroup) choiceGroup.setAttribute('aria-invalid', String(showError && !!error));
     return !error;
   }
 
   clearError(fieldId) {
     const group = this.els.stepBody.querySelector(`[data-field-id="${fieldId}"]`);
     if (!group) return;
-    group.querySelector('.error-slot').innerHTML = '';
+    const errorSlot = group.querySelector('.error-slot');
+    if (errorSlot) errorSlot.innerHTML = '';
+    group.classList.remove('has-error');
+    group.querySelector('.field-input')?.classList.remove('invalid');
+    group.querySelector('[aria-invalid]')?.setAttribute('aria-invalid', 'false');
   }
 
   validateCurrentStep() {
     const step = this.steps[this.current];
+    if (!step) {
+      Utils.toast('No form fields are enabled right now.', 'error');
+      return false;
+    }
     let valid = true;
     step.fields.forEach(f => {
       this.values[f.id] = this.getFieldValue(f);
@@ -252,7 +294,7 @@ class FormEngine {
     });
     if (!valid) {
       Utils.toast('Please fix the highlighted fields.', 'error');
-      const firstInvalid = this.els.stepBody.querySelector('.invalid');
+      const firstInvalid = this.els.stepBody.querySelector('.invalid, .field-group.has-error');
       firstInvalid?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     return valid;
@@ -268,7 +310,15 @@ class FormEngine {
   }
 
   _updateNavButtons() {
+    const hasSteps = this.steps.length > 0;
+    if (!hasSteps) {
+      this.els.btnBack.classList.add('hidden');
+      this.els.btnNext.classList.add('hidden');
+      this.els.btnSubmit.classList.add('hidden');
+      return;
+    }
     const isLast = this.current === this.steps.length - 1;
+    this.els.btnBack.classList.remove('hidden');
     this.els.btnBack.classList.toggle('invisible', this.current === 0);
     this.els.btnNext.classList.toggle('hidden', isLast);
     this.els.btnSubmit.classList.toggle('hidden', !isLast);
@@ -290,7 +340,7 @@ class FormEngine {
     }
     if (!confirm('Reset the form? All entered data will be cleared.')) return;
     this.values = {}; this.files = {}; this.signatures = {}; this.current = 0;
-    localStorage.removeItem(this.draftKey);
+    Utils.storageRemove(this.draftKey);
     this.renderStep();
     Utils.toast('Form has been reset.', 'info');
   }
@@ -299,33 +349,42 @@ class FormEngine {
 
   _saveDraft() {
     if (!Utils.isFeatureEnabled('drafts')) return;
-    Utils.debounce(() => {
-      try {
-        localStorage.setItem(this.draftKey, JSON.stringify({ values: this.values, current: this.current, savedAt: Date.now() }));
-      } catch (e) { /* storage full or unavailable — ignore silently */ }
-    }, 300)();
+    this.saveDraftDebounced();
+  }
+
+  _persistDraft() {
+    const values = { ...this.values };
+    this.steps.forEach(step => step.fields.forEach(field => {
+      if (['password', 'image', 'pdf', 'files', 'signature'].includes(field.type)) delete values[field.id];
+    }));
+    try {
+      Utils.storageSet(this.draftKey, JSON.stringify({ values, current: this.current, savedAt: Date.now() }));
+    } catch { /* Storage can be full or disabled. */ }
   }
 
   _restoreDraft() {
     if (!Utils.isFeatureEnabled('drafts')) return;
-    const raw = localStorage.getItem(this.draftKey);
+    const raw = Utils.storageGet(this.draftKey);
     if (!raw) return;
     try {
       const draft = JSON.parse(raw);
       if (!draft.values || Object.keys(draft.values).length === 0) return;
       this.els.draftBanner.classList.remove('hidden');
-      this.els.draftBanner.querySelector('[data-draft-time]').textContent = Utils.formatDate(new Date(draft.savedAt).toISOString());
+      const savedAt = Number(draft.savedAt);
+      this.els.draftBanner.querySelector('[data-draft-time]').textContent = Number.isFinite(savedAt)
+        ? Utils.formatDate(new Date(savedAt).toISOString()) : 'an earlier date';
       this.els.draftBanner.querySelector('[data-restore]').addEventListener('click', () => {
-        this.values = draft.values; this.current = draft.current || 0;
+        this.values = draft.values;
+        this.current = Math.max(0, Math.min(Number(draft.current) || 0, Math.max(this.steps.length - 1, 0)));
         this.renderStep();
         this.els.draftBanner.classList.add('hidden');
         Utils.toast('Draft restored.', 'success');
       });
       this.els.draftBanner.querySelector('[data-discard]').addEventListener('click', () => {
-        localStorage.removeItem(this.draftKey);
+        Utils.storageRemove(this.draftKey);
         this.els.draftBanner.classList.add('hidden');
       });
-    } catch (e) { localStorage.removeItem(this.draftKey); }
+    } catch (e) { Utils.storageRemove(this.draftKey); }
   }
 
   /* ---------------- Submission ---------------- */
@@ -341,7 +400,7 @@ class FormEngine {
     }
 
     // Client-side soft rate limit (server enforces the real limit)
-    const last = Number(localStorage.getItem(this.rateKey) || 0);
+    const last = Number(Utils.storageGet(this.rateKey) || 0);
     if (Date.now() - last < 15000) {
       Utils.toast('Please wait a few seconds before submitting again.', 'error');
       return;
@@ -375,8 +434,8 @@ class FormEngine {
         throw new Error(result?.message || 'Submission failed.');
       }
 
-      localStorage.setItem(this.rateKey, String(Date.now()));
-      localStorage.removeItem(this.draftKey);
+      Utils.storageSet(this.rateKey, String(Date.now()));
+      Utils.storageRemove(this.draftKey);
       this._showSuccess(result.submissionId || submissionId);
     } catch (err) {
       console.error(err);
@@ -419,6 +478,8 @@ class FormEngine {
     this.els.formShell.classList.add('hidden');
     this.els.successShell.classList.remove('hidden');
     this.els.successShell.querySelector('[data-submission-id]').textContent = submissionId;
+    const confirmationLink = this.els.successShell.querySelector('a[href="success.html"]');
+    if (confirmationLink) confirmationLink.href = `success.html?id=${encodeURIComponent(submissionId)}&ts=${Date.now()}`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
