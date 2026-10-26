@@ -357,12 +357,23 @@
       const activeSlug = Utils.getActiveTopicSlug();
       if (activeSlug) {
         const topic = Utils.getTopicBySlug(activeSlug);
-        if (topic) Utils.setVisibleFieldIds(topic.fieldIds || []);
+        if (topic) {
+          Utils.setVisibleFieldIds(topic.fieldIds || []);
+          window.formTopicSlug = topic.slug;
+        } else {
+          window.formTopicSlug = '';
+        }
+      } else {
+        window.formTopicSlug = '';
       }
+      window.formEngine?.setTopicSlug(window.formTopicSlug);
       renderActiveBanner(null);
       return;
     }
 
+    // Keep the URL slug while server topics are loading; the backend validates it on submit.
+    window.formTopicSlug = slug;
+    window.formEngine?.setTopicSlug(slug);
     const topic = Utils.getTopicBySlug(slug);
     if (!topic) {
       renderActiveBanner(null);

@@ -9,10 +9,18 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="css/style.css">
 <style>
+  #print-report { display: none; }
   @media print {
-    #topbar, #login-gate, .no-print { display: none !important; }
+    @page { margin: 14mm; }
     body { background: #fff !important; color: #000 !important; }
-    .glass { background: #fff !important; backdrop-filter: none !important; box-shadow: none !important; border-color: #ddd !important; }
+    body > :not(#print-report) { display: none !important; }
+    #print-report { display: block !important; color: #111 !important; font: 10pt/1.4 Arial, sans-serif; }
+    #print-report h1 { font-size: 20pt; margin: 0 0 4pt; }
+    #print-report p { color: #555; margin: 0 0 12pt; }
+    #print-report table { width: 100%; border-collapse: collapse; }
+    #print-report th, #print-report td { border: 1px solid #bbb; padding: 5pt; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+    #print-report th { background: #eee !important; color: #111 !important; }
+    #print-report tr { break-inside: avoid; }
   }
 
   /* ── Table ── */
@@ -378,6 +386,17 @@
         <svg class="absolute left-3 top-1/2 -translate-y-1/2 opacity-40" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
         <input id="search-input" type="search" placeholder="Search name, email, or any field…" class="field-input pl-9">
       </div>
+      <select id="topic-filter" class="field-input w-full sm:w-auto" aria-label="Filter submissions by topic">
+        <option value="">All topics</option>
+        <option value="__unassigned__">Unassigned topic</option>
+      </select>
+      <select id="status-filter" class="field-input w-full sm:w-auto" aria-label="Filter submissions by review status">
+        <option value="">All statuses</option>
+        <option value="New">New</option>
+        <option value="Reviewed">Reviewed</option>
+      </select>
+      <button id="btn-import-csv" class="btn btn-ghost text-sm">⬆ Import CSV</button>
+      <input id="import-csv-file" type="file" accept=".csv,text/csv" class="hidden" aria-label="Choose a CSV file to import">
       <button id="btn-export-csv" class="btn btn-ghost text-sm">⬇ Export CSV</button>
       <button id="btn-export-xls" class="btn btn-ghost text-sm">⬇ Export Excel</button>
       <button id="btn-print" class="btn btn-ghost text-sm">🖨 Print</button>
@@ -388,17 +407,19 @@
       <table class="w-full" id="submissions-table">
         <thead>
           <tr>
-            <th>ID</th><th>Submitted</th><th>Name</th><th>Email</th><th>Phone</th><th>Status</th><th class="no-print">Actions</th>
+            <th>ID</th><th>Submitted</th><th>Topic</th><th>Name</th><th>Email</th><th>Phone</th><th>Status</th><th class="no-print">Actions</th>
           </tr>
         </thead>
         <tbody id="table-body">
-          <tr><td colspan="7" class="text-center py-8 field-hint">Loading submissions…</td></tr>
+          <tr><td colspan="8" class="text-center py-8 field-hint">Loading submissions…</td></tr>
         </tbody>
       </table>
     </div>
 
   </main>
 </div><!-- /#dashboard -->
+
+<section id="print-report" aria-label="Submission report"></section>
 
 <!-- ── Detail modal ── -->
 <div id="detail-modal" class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center px-4">

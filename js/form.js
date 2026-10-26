@@ -10,10 +10,11 @@ class FormEngine {
     this.root = root;
     this.steps = this.schema.steps;
     this.current = 0;
+    this.topicSlug = window.formTopicSlug || '';
     this.values = {};
     this.files = {};      // fieldId -> File[]
     this.signatures = {}; // fieldId -> dataURL
-    this.draftKey = `formcraft:draft:${schema.formId}`;
+    this.draftKey = `formcraft:draft:${schema.formId}:${this.topicSlug || 'default'}`;
     this.rateKey = `formcraft:lastSubmit:${schema.formId}`;
     this.submitting = false;
     this.saveDraftDebounced = Utils.debounce(() => this._persistDraft(), 300);
@@ -309,6 +310,17 @@ class FormEngine {
     this.els.btnReset.addEventListener('click', () => this.resetForm());
   }
 
+  setTopicSlug(slug) {
+    const nextSlug = String(slug || '').trim();
+    if (nextSlug === this.topicSlug) return;
+    this.saveDraftDebounced.cancel();
+    this.els.draftBanner.classList.add('hidden');
+    this.topicSlug = nextSlug;
+    this.draftKey = `formcraft:draft:${this.schema.formId}:${this.topicSlug || 'default'}`;
+    if (Object.keys(this.values).length) this._saveDraft();
+    else this._restoreDraft();
+  }
+
   _updateNavButtons() {
     const hasSteps = this.steps.length > 0;
     if (!hasSteps) {
@@ -340,6 +352,7 @@ class FormEngine {
     }
     if (!confirm('Reset the form? All entered data will be cleared.')) return;
     this.values = {}; this.files = {}; this.signatures = {}; this.current = 0;
+    this.saveDraftDebounced.cancel();
     Utils.storageRemove(this.draftKey);
     this.renderStep();
     Utils.toast('Form has been reset.', 'info');
@@ -368,22 +381,31 @@ class FormEngine {
     if (!raw) return;
     try {
       const draft = JSON.parse(raw);
-      if (!draft.values || Object.keys(draft.values).length === 0) return;
+      if (!draft.values || typeof draft.values !== 'object' || Array.isArray(draft.values) || Object.keys(draft.values).length === 0) return;
+      const restorableFieldIds = new Set(this.steps.flatMap(step => step.fields)
+        .filter(field => !['password', 'signature', 'image', 'pdf', 'files'].includes(field.type))
+        .map(field => field.id));
+      const draftValues = Object.fromEntries(Object.entries(draft.values).filter(([id]) => restorableFieldIds.has(id)));
+      if (!Object.keys(draftValues).length) return;
       this.els.draftBanner.classList.remove('hidden');
       const savedAt = Number(draft.savedAt);
-      this.els.draftBanner.querySelector('[data-draft-time]').textContent = Number.isFinite(savedAt)
+      const validSavedAt = Number.isFinite(savedAt) && Number.isFinite(new Date(savedAt).getTime());
+      this.els.draftBanner.querySelector('[data-draft-time]').textContent = validSavedAt
         ? Utils.formatDate(new Date(savedAt).toISOString()) : 'an earlier date';
-      this.els.draftBanner.querySelector('[data-restore]').addEventListener('click', () => {
-        this.values = draft.values;
-        this.current = Math.max(0, Math.min(Number(draft.current) || 0, Math.max(this.steps.length - 1, 0)));
+      this.els.draftBanner.querySelector('[data-restore]').onclick = () => {
+        this.values = draftValues;
+        const savedStep = Number(draft.current);
+        const safeStep = Number.isInteger(savedStep) ? savedStep : 0;
+        this.current = Math.max(0, Math.min(safeStep, Math.max(this.steps.length - 1, 0)));
         this.renderStep();
         this.els.draftBanner.classList.add('hidden');
         Utils.toast('Draft restored.', 'success');
-      });
-      this.els.draftBanner.querySelector('[data-discard]').addEventListener('click', () => {
+      };
+      this.els.draftBanner.querySelector('[data-discard]').onclick = () => {
+        this.saveDraftDebounced.cancel();
         Utils.storageRemove(this.draftKey);
         this.els.draftBanner.classList.add('hidden');
-      });
+      };
     } catch (e) { Utils.storageRemove(this.draftKey); }
   }
 
@@ -399,7 +421,7 @@ class FormEngine {
       return;
     }
 
-    // Client-side soft rate limit (server enforces the real limit)
+    // Client-side cooldown; the backend can also limit requests when a trusted IP is available.
     const last = Number(Utils.storageGet(this.rateKey) || 0);
     if (Date.now() - last < 15000) {
       Utils.toast('Please wait a few seconds before submitting again.', 'error');
@@ -415,6 +437,7 @@ class FormEngine {
         formId: this.schema.formId,
         submissionId,
         timestamp: new Date().toISOString(),
+        topicSlug: this.topicSlug,
         userAgent: navigator.userAgent,
         honeypot: this.els.honeypot?.value || '',
         values: this._sanitizedValues(),
@@ -435,6 +458,7 @@ class FormEngine {
       }
 
       Utils.storageSet(this.rateKey, String(Date.now()));
+      this.saveDraftDebounced.cancel();
       Utils.storageRemove(this.draftKey);
       this._showSuccess(result.submissionId || submissionId);
     } catch (err) {

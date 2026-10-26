@@ -44,10 +44,12 @@ const Utils = (() => {
 
   function debounce(fn, wait = 400) {
     let t;
-    return (...args) => {
+    const debounced = (...args) => {
       clearTimeout(t);
       t = setTimeout(() => fn(...args), wait);
     };
+    debounced.cancel = () => { clearTimeout(t); t = undefined; };
+    return debounced;
   }
 
   function getVisibleFieldIds(storage = getStorage()) {

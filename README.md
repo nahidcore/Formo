@@ -28,15 +28,18 @@ Short text, long text, number, email, phone, date, time, dropdown, radio, checkb
 
 **Backend (Google Apps Script)**
 - Every submission is written to Google Sheets with dynamic columns (base columns + every custom field, auto-created on first use)
+- Topic links are recorded with submissions, so topic counts and filters use exact attribution
 - Files & signatures uploaded to Google Drive; shareable view links written back into the Sheet
-- Honeypot + server-side rate limiting (per IP, via `CacheService`)
+- Honeypot + optional server-side rate limiting when a trusted caller IP is available (`CacheService`)
 - Input sanitization against stored XSS
 - Admin token authentication for all read/write admin actions
 
 **Admin dashboard**
 - Total / today / this-week / pending-review stat cards
 - Full-text search across all fields
-- Export to CSV and Excel (`.xls`), print view
+- Filter submissions by topic and review status; older submissions without topic metadata appear as unassigned
+- Import FormCraft CSV exports (up to 500 rows; existing submission IDs are skipped) and export to CSV / Excel (`.xls`)
+- Print a report containing only the filtered submission information
 - Per-row detail modal, mark-as-reviewed, delete
 
 ---
@@ -124,6 +127,8 @@ Both `index.html` (submissions) and `admin.html` (dashboard) read this same valu
 
 That's it — no build step, no npm install, no server.
 
+The backend adds a `Topic` column to an existing submissions sheet the next time a form is submitted. Submissions created before topic attribution was added remain unassigned; new topic links record their exact topic slug.
+
 ---
 
 ## 🔐 Admin access
@@ -168,7 +173,7 @@ The frontend posts with `Content-Type: text/plain` specifically to avoid a CORS 
 Apps Script has a ~50MB total payload limit per request and Drive quota depends on your Google account. Reduce `maxSizeMB` in `js/schema.js` if you hit limits, and check the Executions log for the specific error.
 
 **Rate limit false positives**
-The demo limit is 5 submissions per 10 minutes per IP (`validation.gs → RATE_LIMIT_MAX/WINDOW`). Adjust to taste — note Apps Script's `doPost` doesn't receive the caller's IP directly from a browser `fetch`; if you need reliable IP-based limiting, front the endpoint with Cloudflare Workers or pass a header from a trusted proxy.
+The demo limit is 5 submissions per 10 minutes when a caller IP is available (`validation.gs → RATE_LIMIT_MAX/WINDOW`). Apps Script's `doPost` doesn't receive the caller's IP directly from a browser `fetch`, so direct browser submissions cannot be reliably limited per IP. For that, front the endpoint with a trusted proxy such as Cloudflare Workers.
 
 **Dark mode doesn't persist**
 Check that `localStorage` isn't blocked (private/incognito windows with strict tracking protection can block it) — `js/theme.js` falls back to the OS-level `prefers-color-scheme` in that case.

@@ -50,12 +50,16 @@ const AdminApp = (() => {
     els.newFieldOptions = document.getElementById('new-field-options');
     els.newFieldStep = document.getElementById('new-field-step');
     els.search = document.getElementById('search-input');
+    els.topicFilter = document.getElementById('topic-filter');
+    els.statusFilter = document.getElementById('status-filter');
     els.tableBody = document.getElementById('table-body');
     els.statTotal = document.getElementById('stat-total');
     els.statToday = document.getElementById('stat-today');
     els.statWeek = document.getElementById('stat-week');
     els.statPending = document.getElementById('stat-pending');
     els.btnExportCsv = document.getElementById('btn-export-csv');
+    els.btnImportCsv = document.getElementById('btn-import-csv');
+    els.importCsvFile = document.getElementById('import-csv-file');
     els.btnExportXls = document.getElementById('btn-export-xls');
     els.btnPrint = document.getElementById('btn-print');
     els.modal = document.getElementById('detail-modal');
@@ -151,13 +155,15 @@ const AdminApp = (() => {
 
   function renderAll() {
     computeStats();
+    renderTopicFilter();
     applyFilter();
   }
 
   function computeStats() {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfWeek = new Date(startOfToday); startOfWeek.setDate(startOfWeek.getDate() - 7);
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfWeek.getDate() - ((startOfWeek.getDay() + 6) % 7));
 
     els.statTotal.textContent = submissions.length;
     els.statToday.textContent = submissions.filter(s => new Date(s.timestamp) >= startOfToday).length;
@@ -167,14 +173,36 @@ const AdminApp = (() => {
 
   function applyFilter() {
     const q = (els.search.value || '').toLowerCase().trim();
-    filtered = !q ? submissions.slice() : submissions.filter(s =>
-      JSON.stringify(s).toLowerCase().includes(q));
+    const topicSlug = els.topicFilter?.value || '';
+    const status = els.statusFilter?.value || '';
+    filtered = submissions.filter(s => {
+      if (q && !JSON.stringify(s).toLowerCase().includes(q)) return false;
+      if (topicSlug === '__unassigned__' && s.topicSlug) return false;
+      if (topicSlug && topicSlug !== '__unassigned__' && s.topicSlug !== topicSlug) return false;
+      if (status && (s.status || 'New') !== status) return false;
+      return true;
+    });
     renderTable();
+  }
+
+  function renderTopicFilter() {
+    if (!els.topicFilter) return;
+    const selected = els.topicFilter.value;
+    const topics = Utils.getTopics();
+    els.topicFilter.innerHTML = '<option value="">All topics</option><option value="__unassigned__">Unassigned topic</option>' +
+      topics.map(topic => `<option value="${Utils.escapeHTML(topic.slug)}">${Utils.escapeHTML(topic.name)}</option>`).join('');
+    if ([...els.topicFilter.options].some(option => option.value === selected)) els.topicFilter.value = selected;
+  }
+
+  function topicLabel(submission) {
+    if (!submission?.topicSlug) return 'Unassigned';
+    const topic = Utils.getTopics().find(item => item.slug === submission.topicSlug);
+    return topic ? topic.name : `Deleted topic (${submission.topicSlug})`;
   }
 
   function renderTable() {
     if (!filtered.length) {
-      els.tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-8 field-hint">No submissions found.</td></tr>`;
+      els.tableBody.innerHTML = `<tr><td colspan="8" class="text-center py-8 field-hint">No submissions match these filters.</td></tr>`;
       return;
     }
     els.tableBody.innerHTML = filtered
@@ -183,6 +211,7 @@ const AdminApp = (() => {
       <tr>
         <td class="font-mono text-xs">${Utils.escapeHTML((s.submissionId || '').slice(0, 8))}</td>
         <td>${Utils.escapeHTML(Utils.formatDate(s.timestamp))}</td>
+        <td>${Utils.escapeHTML(topicLabel(s))}</td>
         <td>${Utils.escapeHTML(formatDetailValue(getSubmissionFieldValue(s, 'full_name')))}</td>
         <td>${Utils.escapeHTML(formatDetailValue(getSubmissionFieldValue(s, 'email')))}</td>
         <td>${Utils.escapeHTML(formatDetailValue(getSubmissionFieldValue(s, 'phone')))}</td>
@@ -203,18 +232,9 @@ const AdminApp = (() => {
 
     const subKeys = Object.keys(s.values || {});
     
-    // Auto-detect which topic this submission matches best
     const topics = Utils.getTopics();
-    let bestMatch = null;
-    let maxMatchCount = 0;
-    topics.forEach(t => {
-      if (!t.fieldIds) return;
-      const matchCount = t.fieldIds.filter(fId => subKeys.includes(fId) && s.values[fId]).length;
-      if (matchCount > maxMatchCount && matchCount > 0) {
-        maxMatchCount = matchCount;
-        bestMatch = t;
-      }
-    });
+    const assignedTopic = topics.find(topic => topic.slug === s.topicSlug);
+    const topicAssignment = assignedTopic?.name || (s.topicSlug ? `Deleted topic (${s.topicSlug})` : 'Unassigned');
 
     const fullName = getSubmissionFieldValue(s, 'full_name') || getSubmissionFieldValue(s, 'name') || 'Anonymous';
     const email = getSubmissionFieldValue(s, 'email') || 'No email';
@@ -240,9 +260,10 @@ const AdminApp = (() => {
           <p class="font-mono text-xs text-[var(--foreground)]">${Utils.escapeHTML(s.submissionId || '—')}</p>
         </div>
         <div>
-          <p class="field-hint text-[0.65rem] uppercase tracking-wider font-semibold mb-1">Inferred Topic</p>
+          <p class="field-hint text-[0.65rem] uppercase tracking-wider font-semibold mb-1">Topic</p>
           <p class="font-medium flex items-center gap-1.5 text-xs">
-            ${bestMatch ? `<span class="w-2 h-2 rounded-full bg-[var(--primary)] shadow-[0_0_8px_var(--primary)]"></span> ${Utils.escapeHTML(bestMatch.name)}` : '<span class="w-2 h-2 rounded-full bg-gray-400"></span> <i class="field-hint">General</i>'}
+            <span class="w-2 h-2 rounded-full ${assignedTopic ? 'bg-[var(--primary)] shadow-[0_0_8px_var(--primary)]' : 'bg-gray-400'}"></span>
+            ${Utils.escapeHTML(topicAssignment)}
           </p>
         </div>
       </div>
@@ -340,7 +361,7 @@ const AdminApp = (() => {
   function toCSV() {
     if (!filtered.length) return '';
     const keys = Array.from(new Set(filtered.flatMap(s => Object.keys(s.values || s))));
-    const header = ['submissionId', 'timestamp', 'status', ...keys];
+    const header = Array.from(new Set(['submissionId', 'timestamp', 'status', 'topicSlug', ...keys]));
     const lines = [header.join(',')];
     filtered.forEach(s => {
       const row = header.map(k => {
@@ -352,6 +373,103 @@ const AdminApp = (() => {
       lines.push(row.join(','));
     });
     return lines.join('\n');
+  }
+
+  function parseCSV(text) {
+    const source = String(text || '').replace(/^\uFEFF/, '');
+    const rows = [];
+    let row = [], cell = '', quoted = false;
+    for (let i = 0; i < source.length; i++) {
+      const char = source[i];
+      if (quoted) {
+        if (char === '"' && source[i + 1] === '"') { cell += '"'; i++; }
+        else if (char === '"') quoted = false;
+        else cell += char;
+      } else if (char === '"' && cell === '') {
+        quoted = true;
+      } else if (char === ',') {
+        row.push(cell); cell = '';
+      } else if (char === '\n' || char === '\r') {
+        if (char === '\r' && source[i + 1] === '\n') i++;
+        row.push(cell); rows.push(row); row = []; cell = '';
+      } else {
+        cell += char;
+      }
+    }
+    if (quoted) throw new Error('The CSV has an unclosed quoted value.');
+    if (cell.length || row.length) { row.push(cell); rows.push(row); }
+    return rows.filter(cells => cells.some(value => String(value).trim() !== ''));
+  }
+
+  function mapImportHeader(header) {
+    const label = String(header || '').trim();
+    const normalized = label.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const metadata = {
+      id: 'submissionId', submissionid: 'submissionId',
+      timestamp: 'timestamp', submitted: 'timestamp', submittedat: 'timestamp', submittedon: 'timestamp',
+      status: 'status', reviewstatus: 'status',
+      topic: 'topicSlug', topicslug: 'topicSlug',
+    };
+    if (metadata[normalized]) return { type: 'metadata', key: metadata[normalized] };
+    const contactFields = {
+      name: 'full_name', fullname: 'full_name',
+      email: 'email', emailaddress: 'email',
+      phone: 'phone', phonenumber: 'phone', mobile: 'phone', mobilenumber: 'phone',
+    };
+    if (contactFields[normalized]) return { type: 'value', key: contactFields[normalized] };
+    const fieldId = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return /^[a-z][a-z0-9_]{0,63}$/.test(fieldId) ? { type: 'value', key: fieldId } : null;
+  }
+
+  function parseImportCSV(text) {
+    const rows = parseCSV(text);
+    if (rows.length < 2) throw new Error('The CSV must contain a header and at least one data row.');
+    const columns = rows[0].map(mapImportHeader);
+    if (!columns.some(Boolean)) throw new Error('No supported columns were found in the CSV header.');
+
+    return rows.slice(1).map((cells, rowIndex) => {
+      const record = { submissionId: '', timestamp: '', status: '', topicSlug: '', values: {} };
+      columns.forEach((column, index) => {
+        if (!column) return;
+        const value = String(cells[index] ?? '').trim();
+        if (!value) return;
+        const target = column.type === 'metadata' ? record : record.values;
+        const existing = target[column.key];
+        if (existing && existing !== value) {
+          throw new Error(`CSV row ${rowIndex + 2} has conflicting columns for "${column.key}".`);
+        }
+        target[column.key] = value;
+      });
+      if (!record.status) record.status = 'New';
+      return record;
+    }).filter(record => record.submissionId || record.timestamp || record.topicSlug || Object.keys(record.values).length);
+  }
+
+  async function importCSVFile() {
+    const file = els.importCsvFile?.files?.[0];
+    if (!file) return;
+    const originalLabel = els.btnImportCsv.textContent;
+    try {
+      if (file.size > 2 * 1024 * 1024) throw new Error('CSV files must be 2 MB or smaller.');
+      const records = parseImportCSV(await file.text());
+      if (!records.length) throw new Error('No submission rows were found in the CSV.');
+      if (records.length > 500) throw new Error('Import up to 500 rows at a time.');
+      els.btnImportCsv.disabled = true;
+      els.btnImportCsv.innerHTML = '<span class="spinner"></span> Importing…';
+      const result = await apiPost('importSubmissions', { records });
+      if (result.status === 'error') throw new Error(result.message || 'Import failed.');
+      els.search.value = '';
+      if (els.topicFilter) els.topicFilter.value = '';
+      if (els.statusFilter) els.statusFilter.value = '';
+      await refresh();
+      Utils.toast(`Imported ${result.imported} submission${result.imported === 1 ? '' : 's'}; skipped ${result.skipped} duplicate or invalid row${result.skipped === 1 ? '' : 's'}.`, 'success');
+    } catch (error) {
+      Utils.toast(error.message || 'Could not import this CSV.', 'error');
+    } finally {
+      els.btnImportCsv.disabled = false;
+      els.btnImportCsv.textContent = originalLabel;
+      els.importCsvFile.value = '';
+    }
   }
 
   function downloadBlob(content, filename, mime) {
@@ -377,6 +495,29 @@ const AdminApp = (() => {
     const html = `<html><head><meta charset="UTF-8"></head><body>${table.outerHTML}</body></html>`;
     downloadBlob(html, `formcraft-submissions-${Date.now()}.xls`, 'application/vnd.ms-excel');
     Utils.toast('Excel file exported.', 'success');
+  }
+
+  function renderPrintReport() {
+    const report = document.getElementById('print-report');
+    if (!report) return;
+    const sorted = filtered.slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const rows = sorted.map(s => `
+      <tr>
+        <td>${Utils.escapeHTML((s.submissionId || '').slice(0, 8))}</td>
+        <td>${Utils.escapeHTML(Utils.formatDate(s.timestamp))}</td>
+        <td>${Utils.escapeHTML(topicLabel(s))}</td>
+        <td>${Utils.escapeHTML(formatDetailValue(getSubmissionFieldValue(s, 'full_name')))}</td>
+        <td>${Utils.escapeHTML(formatDetailValue(getSubmissionFieldValue(s, 'email')))}</td>
+        <td>${Utils.escapeHTML(formatDetailValue(getSubmissionFieldValue(s, 'phone')))}</td>
+        <td>${Utils.escapeHTML(s.status || 'New')}</td>
+      </tr>`).join('');
+    report.innerHTML = `
+      <h1>FormCraft submissions</h1>
+      <p>${sorted.length} record${sorted.length === 1 ? '' : 's'} · Printed ${Utils.escapeHTML(new Date().toLocaleString())}</p>
+      <table>
+        <thead><tr><th>ID</th><th>Submitted</th><th>Topic</th><th>Name</th><th>Email</th><th>Phone</th><th>Status</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="7">No submissions match the current filters.</td></tr>'}</tbody>
+      </table>`;
   }
 
   function getConfiguredFields() {
@@ -598,15 +739,8 @@ const AdminApp = (() => {
       }
     }
 
-    // Submission stats for this topic (topics share field IDs as the filter signal)
-    const fieldSet = new Set(fieldIds);
-    const topicSubs = submissions.filter(s => {
-      const values = s.values || {};
-      return Array.from(fieldSet).some(id => {
-        const value = values[id] ?? s[id];
-        return Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && String(value).trim() !== '';
-      });
-    });
+    // New submissions carry an explicit topic slug; older rows remain unassigned.
+    const topicSubs = submissions.filter(s => s.topicSlug === topic.slug);
     const pending = topicSubs.filter(s => (s.status || 'New') !== 'Reviewed').length;
     if (els.topicDashStatSubs) els.topicDashStatSubs.textContent = topicSubs.length;
     if (els.topicDashStatPending) els.topicDashStatPending.textContent = pending;
@@ -699,6 +833,8 @@ const AdminApp = (() => {
     renderTopicFieldList();
     renderTopicsList();
     renderTopicDashboardSelector();
+    renderTopicFilter();
+    applyFilter();
     renderFormFieldConfig();
     renderInsights();
     syncTopicEditorUI();
@@ -740,6 +876,8 @@ const AdminApp = (() => {
     renderTopicFieldList();
     renderTopicsList();
     renderTopicDashboardSelector();
+    renderTopicFilter();
+    applyFilter();
     renderFormFieldConfig();
     renderInsights();
     syncTopicEditorUI();
@@ -848,13 +986,17 @@ const AdminApp = (() => {
     els.tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
     els.btnRefresh.addEventListener('click', refresh);
     els.search.addEventListener('input', Utils.debounce(applyFilter, 200));
+    els.topicFilter?.addEventListener('change', applyFilter);
+    els.statusFilter?.addEventListener('change', applyFilter);
+    els.btnImportCsv?.addEventListener('click', () => els.importCsvFile?.click());
+    els.importCsvFile?.addEventListener('change', importCSVFile);
     els.btnExportCsv.addEventListener('click', exportCSV);
     els.btnCreateTopic?.addEventListener('click', createTopic);
     els.btnApplyFormConfig?.addEventListener('click', applyFormFieldConfig);
     els.btnApplyFeatureConfig?.addEventListener('click', applyFeatureConfig);
     els.btnAddCustomField?.addEventListener('click', addCustomField);
     els.btnExportXls.addEventListener('click', exportExcel);
-    els.btnPrint.addEventListener('click', () => window.print());
+    els.btnPrint.addEventListener('click', () => { renderPrintReport(); window.print(); });
     els.btnCloseModal.addEventListener('click', () => els.modal.classList.add('hidden'));
 
     const syncCustomFieldOptions = () => {
@@ -911,8 +1053,10 @@ const AdminApp = (() => {
       renderTopicFieldList();
       renderTopicsList();
       renderTopicDashboardSelector();
+      renderTopicFilter();
       renderFormFieldConfig();
       renderInsights();
+      renderAll();
     }
   }
 
@@ -927,6 +1071,7 @@ const AdminApp = (() => {
     renderTopicFieldList();
     renderTopicsList();
     renderTopicDashboardSelector();
+    renderTopicFilter();
     renderFormFieldConfig();
     renderFeatureConfig();
     renderInsights();

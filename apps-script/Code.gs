@@ -19,7 +19,7 @@ const TOPICS_PROP_KEY = 'formcraft_topics'; // ScriptProperties key for topic st
 const CONFIG_PROP_KEY = 'formcraft_config';
 
 // Columns that always exist, in order, before the dynamic per-field columns.
-const BASE_COLUMNS = ['Submission ID', 'Timestamp', 'IP', 'Browser', 'Name', 'Email', 'Phone'];
+const BASE_COLUMNS = ['Submission ID', 'Timestamp', 'IP', 'Browser', 'Name', 'Email', 'Phone', 'Topic'];
 const TAIL_COLUMNS = ['Files', 'Status', 'Notes'];
 
 /* ============================== ENTRY POINTS ============================== */
@@ -84,6 +84,12 @@ function doPost(e) {
       deleteSubmissionRow(payload.submissionId);
       return jsonOut({ status: 'ok' });
     }
+    if (action === 'importsubmissions') {
+      Validation.verifyAdminToken(payload.token);
+      if (!Array.isArray(payload.records)) return jsonOut({ status: 'error', message: 'records must be an array.' });
+      if (payload.records.length > 500) return jsonOut({ status: 'error', message: 'Import up to 500 rows at a time.' });
+      return jsonOut({ status: 'ok', ...importSubmissionRecords(payload.records) });
+    }
 
     // ── Topic write actions (admin only) ──
     if (action === 'settopics') {
@@ -122,10 +128,16 @@ function doPost(e) {
 
 function handleSubmission(payload, e) {
   const ip = (e && e.parameter && e.parameter.ip) || 'unknown';
+  const topicSlug = String(payload.topicSlug || '').trim();
 
   // 1) Spam defenses
   Validation.checkHoneypot(payload.honeypot);
   Validation.checkRateLimit(ip);
+
+  // Reject stale or forged topic links so submissions are attributed only to live topics.
+  if (topicSlug && !loadTopics().some(topic => topic.slug === topicSlug)) {
+    throw new Error('This topic link is no longer available. Please choose a current topic.');
+  }
 
   // 2) Sanitize all user-supplied text
   const values = Validation.sanitizeObject(payload.values || {});
@@ -138,9 +150,10 @@ function handleSubmission(payload, e) {
   // 4) Write the row
   appendSubmissionRow({
     submissionId: payload.submissionId || Utilities.getUuid(),
-    timestamp: payload.timestamp || new Date().toISOString(),
+    timestamp: new Date().toISOString(),
     ip: ip,
     browser: (payload.userAgent || '').slice(0, 250),
+    topicSlug: topicSlug,
     values: values,
     files: allFiles,
   });
@@ -182,27 +195,103 @@ function ensureFieldColumns(sheet, fieldKeys) {
   return getHeaders(sheet);
 }
 
-function appendSubmissionRow({ submissionId, timestamp, ip, browser, values, files }) {
-  const sheet = getSheet();
-  const fieldKeys = Object.keys(values);
-  const headers = ensureFieldColumns(sheet, fieldKeys);
+function appendSubmissionRow({ submissionId, timestamp, ip, browser, topicSlug, values, files }) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = getSheet();
+    const fieldKeys = Object.keys(values);
+    const headers = ensureFieldColumns(sheet, ['Topic', ...fieldKeys]);
 
-  const rowMap = {
-    'Submission ID': submissionId,
-    'Timestamp': timestamp,
-    'IP': ip,
-    'Browser': browser,
-    'Name': formatCell(values.full_name || values.name || ''),
-    'Email': formatCell(values.email || ''),
-    'Phone': formatCell(values.phone || ''),
-    'Files': JSON.stringify(files || []),
-    'Status': 'New',
-    'Notes': '',
-  };
-  fieldKeys.forEach(k => { rowMap[k] = formatCell(values[k]); });
+    const rowMap = {
+      'Submission ID': submissionId,
+      'Timestamp': timestamp,
+      'IP': ip,
+      'Browser': browser,
+      'Name': formatCell(values.full_name || values.name || ''),
+      'Email': formatCell(values.email || ''),
+      'Phone': formatCell(values.phone || ''),
+      'Topic': formatCell(topicSlug || ''),
+      'Files': JSON.stringify(files || []),
+      'Status': 'New',
+      'Notes': '',
+    };
+    fieldKeys.forEach(k => { rowMap[k] = formatCell(values[k]); });
 
-  const row = headers.map(h => (h in rowMap ? rowMap[h] : ''));
-  sheet.appendRow(row);
+    const row = headers.map(h => (h in rowMap ? rowMap[h] : ''));
+    sheet.appendRow(row);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function importSubmissionRecords(records) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = getSheet();
+    let headers = getHeaders(sheet);
+    const idCol = headers.indexOf('Submission ID') + 1;
+    if (idCol < 1) throw new Error('Submission sheet is missing its ID column.');
+    const lastRow = sheet.getLastRow();
+    const existingIds = new Set(lastRow > 1
+      ? sheet.getRange(2, idCol, lastRow - 1, 1).getValues().map(row => String(row[0] || ''))
+      : []);
+    const candidates = [];
+    let skipped = 0;
+
+    records.forEach(record => {
+      if (!record || typeof record !== 'object' || Array.isArray(record)) { skipped++; return; }
+      const sourceValues = record.values && typeof record.values === 'object' && !Array.isArray(record.values)
+        ? Validation.sanitizeObject(record.values) : {};
+      const values = {};
+      Object.keys(sourceValues).forEach(key => {
+        if (/^[a-z][a-z0-9_]{0,63}$/.test(key)) values[key] = sourceValues[key];
+      });
+
+      const rawId = String(record.submissionId || '').trim();
+      const submissionId = /^[a-zA-Z0-9._-]{1,128}$/.test(rawId) ? rawId : Utilities.getUuid();
+      if (existingIds.has(submissionId)) { skipped++; return; }
+      existingIds.add(submissionId);
+
+      const rawTimestamp = String(record.timestamp || '').trim();
+      const parsedTimestamp = rawTimestamp ? new Date(rawTimestamp) : null;
+      const timestamp = parsedTimestamp && !isNaN(parsedTimestamp.getTime())
+        ? parsedTimestamp.toISOString() : new Date().toISOString();
+      candidates.push({
+        submissionId,
+        timestamp,
+        topicSlug: String(record.topicSlug || '').trim().slice(0, 100),
+        status: String(record.status || '').trim().toLowerCase() === 'reviewed' ? 'Reviewed' : 'New',
+        values,
+      });
+    });
+
+    if (!candidates.length) return { imported: 0, skipped };
+    const fieldKeys = Array.from(new Set(candidates.flatMap(record => Object.keys(record.values))));
+    headers = ensureFieldColumns(sheet, ['Topic', ...fieldKeys]);
+    const rows = candidates.map(record => {
+      const rowMap = {
+        'Submission ID': formatCell(record.submissionId),
+        'Timestamp': formatCell(record.timestamp),
+        'IP': '',
+        'Browser': '',
+        'Name': formatCell(record.values.full_name || record.values.name || ''),
+        'Email': formatCell(record.values.email || ''),
+        'Phone': formatCell(record.values.phone || ''),
+        'Topic': formatCell(record.topicSlug),
+        'Files': '[]',
+        'Status': record.status,
+        'Notes': '',
+      };
+      Object.keys(record.values).forEach(key => { rowMap[key] = formatCell(record.values[key]); });
+      return headers.map(header => (header in rowMap ? rowMap[header] : ''));
+    });
+    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, headers.length).setValues(rows);
+    return { imported: rows.length, skipped };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function formatCell(v) {
@@ -229,6 +318,7 @@ function listSubmissions() {
       const val = row[i];
       if (h === 'Submission ID') rec.submissionId = val;
       else if (h === 'Timestamp') rec.timestamp = val;
+      else if (h === 'Topic') rec.topicSlug = String(val || '');
       else if (h === 'Status') rec.status = val || 'New';
       else if (h === 'Files') { try { rec.files = JSON.parse(val || '[]'); } catch (e) { rec.files = []; } }
       else if (h === 'Notes') rec.notes = val;
@@ -268,18 +358,30 @@ function findRowBySubmissionId(id) {
 }
 
 function setStatus(submissionId, status) {
-  const rowIndex = findRowIndexBySubmissionId(submissionId);
-  if (rowIndex === -1) throw new Error('Submission not found.');
-  const sheet = getSheet();
-  const headers = getHeaders(sheet);
-  const statusCol = headers.indexOf('Status') + 1;
-  sheet.getRange(rowIndex, statusCol).setValue(status);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const rowIndex = findRowIndexBySubmissionId(submissionId);
+    if (rowIndex === -1) throw new Error('Submission not found.');
+    const sheet = getSheet();
+    const headers = getHeaders(sheet);
+    const statusCol = headers.indexOf('Status') + 1;
+    sheet.getRange(rowIndex, statusCol).setValue(status);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function deleteSubmissionRow(submissionId) {
-  const rowIndex = findRowIndexBySubmissionId(submissionId);
-  if (rowIndex === -1) throw new Error('Submission not found.');
-  getSheet().deleteRow(rowIndex);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const rowIndex = findRowIndexBySubmissionId(submissionId);
+    if (rowIndex === -1) throw new Error('Submission not found.');
+    getSheet().deleteRow(rowIndex);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /* ============================== TOPIC STORAGE ============================== */
